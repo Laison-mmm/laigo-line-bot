@@ -1,6 +1,5 @@
 // 主 webhook 入口
 import express from 'express';
-import bodyParser from 'body-parser';
 import { middleware, Client } from '@line/bot-sdk';
 import dotenv from 'dotenv';
 import parseOrder from './parseOrder.js';
@@ -9,6 +8,7 @@ import handleConfirm from './confirmHandler.js';
 
 dotenv.config();
 
+// LINE SDK 設定
 const config = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.CHANNEL_SECRET,
@@ -16,13 +16,14 @@ const config = {
 
 const app = express();
 const client = new Client(config);
-app.use(bodyParser.json());
-app.use(middleware(config));
 
+// 暫存報單區
 const pendingOrders = new Map();
 
-app.post('/webhook', async (req, res) => {
+// ✅ LINE Webhook 專用路由（middleware 放這裡才能正確驗證簽名）
+app.post('/webhook', middleware(config), async (req, res) => {
   const events = req.body.events;
+
   for (const event of events) {
     if (event.type === 'message' && event.message.type === 'text') {
       const text = event.message.text.trim();
@@ -50,9 +51,11 @@ app.post('/webhook', async (req, res) => {
       }
     }
   }
+
   res.sendStatus(200);
 });
 
+// ✅ 啟動伺服器（Render 將自動綁定這個 port）
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log('LAIGO Bot running on port', port);
