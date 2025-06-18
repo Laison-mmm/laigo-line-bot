@@ -1,6 +1,5 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 export default async function writeToSheet(order) {
@@ -18,7 +17,6 @@ export default async function writeToSheet(order) {
   };
 
   const url = process.env.SHEET_API_URL;
-
   if (!url) {
     console.error('❌ SHEET_API_URL 未設定（.env 或 Render 環境變數）');
     return;
