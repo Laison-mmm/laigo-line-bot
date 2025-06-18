@@ -1,5 +1,7 @@
-
 import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export default async function writeToSheet(order) {
   const payload = {
@@ -14,9 +16,24 @@ export default async function writeToSheet(order) {
     quantity: order.quantity,
     notes: order.notes,
   };
-  await fetch('https://script.google.com/macros/s/AKfycbx2pvAMpiBaKQGdymsPU4BCSRp7HRb_WXyeJprm-wKG4z0NIYesvf2wO2yKTdni6qV4bA/exec', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' },
-  });
+
+  const url = process.env.SHEET_API_URL;
+
+  if (!url) {
+    console.error('❌ SHEET_API_URL 未設定（.env 或 Render 環境變數）');
+    return;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const result = await response.text();
+    console.log('📤 已送出資料到 Sheet：', result);
+  } catch (error) {
+    console.error('❌ 寫入 Google Sheet 時發生錯誤：', error.message);
+  }
 }
