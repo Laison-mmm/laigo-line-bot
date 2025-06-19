@@ -8,19 +8,16 @@ export default async function verifyCustomer(order) {
   }
 
   const todayCode = getTodayCode();
-
   const res = await fetch(process.env.SHEET_API_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet 資料');
 
   const csv = await res.text();
-  const rows = csv.trim().split('\n').map(row => row.split(','));
-
-  const clean = (str) => String(str || '').trim();
+  const rows = csv.trim().split('\n').map(row => row.map(col => (col || '').trim()));
 
   const rowIndex = rows.findIndex(r =>
-    clean(r[3]) === clean(ig) &&
-    clean(r[4]) === clean(name) &&
-    clean(r[5]) === clean(phone)
+    r[3] === ig.trim() &&
+    r[4] === name.trim() &&
+    r[5] === phone.trim()
   );
 
   if (rowIndex !== -1) {
