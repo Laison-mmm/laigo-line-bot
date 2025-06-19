@@ -22,6 +22,27 @@ export default async function writeToSheet(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(row => row.split(','));
 
+  // ✅ 若 verifyCustomer 已傳入 rowIndex，則優先使用（不再重比）
+  if (order.level === '已回購' && order.rowIndex != null) {
+    const row = rows[order.rowIndex];
+    for (let g = 0; g < MAX_GROUPS; g++) {
+      const start = START_COL + g * 3;
+      if (!row[start] && !row[start + 1] && !row[start + 2]) {
+        const payload = {
+          type: 'repurchase',
+          rowIndex: order.rowIndex,
+          startCol: start + 1,
+          orderDate: order.orderDate,
+          product: order.product,
+          quantity: order.quantity
+        };
+        return await postToSheet(payload);
+      }
+    }
+    throw new Error('❌ 回購欄位已滿');
+  }
+
+  // ⬇️ fallback：verify 沒給 rowIndex ➜ 再自行找一次
   const rowIndex = rows.findIndex(r =>
     normalize(r[3]) === normalize(order.ig) &&
     normalize(r[4]) === normalize(order.name) &&
@@ -47,6 +68,7 @@ export default async function writeToSheet(order) {
     throw new Error('❌ 回購欄位已滿');
   }
 
+  // ➜ 新客寫入
   const payload = {
     type: 'new',
     level: order.level,
