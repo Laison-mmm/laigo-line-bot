@@ -9,7 +9,12 @@ export default async function verifyCustomer(order) {
     throw new Error('❌ 欄位不足（verifyCustomer）');
   }
 
-  // 預設清空 level，防止上游殘值影響
+  // 1️⃣ 電話長度檢查：不足 10 碼直接退單
+  const cleanPhone = normalizePhone(order.phone);
+  if (cleanPhone.length < 10) {
+    throw new Error('❌ 電話長度不足 10 碼');
+  }
+
   order.level = '未定';
 
   const res = await fetch(CSV_URL);
@@ -20,18 +25,21 @@ export default async function verifyCustomer(order) {
 
   const clean = str => normalizePhone(String(str || '').replace(/\s/g, ''));
 
-  const rowIndex = rows.findIndex(r =>
+  // 2️⃣ 三鍵比對（精準）
+  const rowIndex = rows.findIndex((r, i) =>
+    i > 0 && // 跳過標題列
     clean(r[3]) === clean(order.ig) &&
     clean(r[4]) === clean(order.name) &&
-    clean(r[5]) === clean(order.phone)
+    clean(r[5]) === cleanPhone
   );
 
   if (rowIndex !== -1) {
     order.level = '已回購';
-    order.rowIndex = rowIndex;
+    order.rowIndex = rowIndex - 1; // 寫入用：扣掉表頭
     return order;
   }
 
+  // 3️⃣ 新客／追蹤判斷（保留）
   const todayCode = getTodaySixDigit();
   order.level = order.inquiryDate === todayCode ? '新客' : '追蹤';
   return order;
