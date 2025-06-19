@@ -15,7 +15,7 @@ export default async function verifyCustomer(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(row => row.split(','));
 
-  const clean = (str) => str?.trim();
+  const clean = (str) => String(str || '').trim();
 
   const rowIndex = rows.findIndex(r =>
     clean(r[3]) === clean(ig) &&
@@ -24,13 +24,12 @@ export default async function verifyCustomer(order) {
   );
 
   if (rowIndex !== -1) {
-    return {
-      level: '已回購',
-      rowIndex
-    };
+    console.log('✅ 判定為回購：', { ig, name, phone, rowIndex });
+    return { level: '已回購', rowIndex };
   }
 
   const level = inquiryDate === todayCode ? '新客' : '追蹤';
+  console.log(`🆕 判定為 ${level}：`, { ig, name, phone });
   return { level };
 }
 
