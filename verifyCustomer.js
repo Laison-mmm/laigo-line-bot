@@ -13,18 +13,14 @@ export default async function verifyCustomer(order) {
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet 資料');
 
   const csv = await res.text();
-  console.log('📦 取得 CSV：', csv.slice(0, 200));
 
-  const lines = csv.trim().split('\n').filter(line => typeof line === 'string' && line.includes(','));
-
-  const rows = lines.map(line => {
-    try {
-      return line.split(',').map(cell => cell.trim());
-    } catch (err) {
-      console.warn('⚠️ 無法解析 row：', line);
-      return [];
-    }
-  }).filter(row => row.length >= 6); // 至少要有 IG / 姓名 / 電話 才能比對
+  // ✅ 防呆處理：只處理合法的行（包含逗號），並轉換成欄位陣列
+  const rows = csv
+    .trim()
+    .split('\n')
+    .filter(line => typeof line === 'string' && line.includes(','))
+    .map(line => line.split(',').map(cell => cell.trim()))
+    .filter(row => row.length >= 6); // 至少要有 IG, 姓名, 電話
 
   const clean = (str) => String(str || '').trim();
 
