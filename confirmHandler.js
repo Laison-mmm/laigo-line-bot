@@ -1,4 +1,4 @@
-import writeToSheet from './sheetWriter.js';
+import { writeToSheet } from './sheetWriter.js';
 
 export default async function handleConfirm(userId, pendingOrders, client, replyToken) {
   const order = pendingOrders.get(userId);
