@@ -1,51 +1,50 @@
-
 export default function parseOrder(text) {
   const lines = text.trim().split('\n');
-').map(l => l.trim()).filter(l => l);
-  const report = {
-    inquiryDate: '',
+
+  const order = {
     ig: '',
     name: '',
     phone: '',
     email: '',
     address: '',
     quantity: 1,
-    orderDate: '',
-    notes: ''
+    price: '',
+    inquiryDate: '',
+    notes: '',
   };
 
-  report.inquiryDate = (lines.find(l => /^\d{6}/.test(l)) || '').slice(0, 6);
-  report.ig = (lines.find(l => /^[a-zA-Z0-9_\.]+$/.test(l)) || '').trim();
+  // 嘗試抓詢問日（六碼開頭）
+  const firstLineMatch = lines[0]?.match(/(\d{6})/);
+  if (firstLineMatch) {
+    order.inquiryDate = firstLineMatch[1];
+  }
 
-  lines.forEach(line => {
-    if (/姓名/.test(line)) report.name = line.replace(/.*姓名[:：]?\s*/, '').trim();
-    if (/電話/.test(line)) {
-      let tel = line.replace(/.*電話[:：]?\s*/, '').replace(/-/g, '').trim();
-      report.phone = tel.length === 9 ? '0' + tel : tel;
+  for (const line of lines) {
+    if (/^姓名[:：]/.test(line)) order.name = line.split(/[:：]/)[1].trim();
+    else if (/^電話[:：]/.test(line)) order.phone = line.split(/[:：]/)[1].replace(/-/g, '').trim();
+    else if (/^信箱[:：]/.test(line)) order.email = line.split(/[:：]/)[1].trim();
+    else if (/^(門市|地址)[:：]/.test(line)) order.address = line.split(/[:：]/)[1].trim();
+    else if (/盒/.test(line)) {
+      order.quantity = parseQuantity(line);
+      order.notes += line + '\n';
+    } else if (/^\d{10}$/.test(line.replace(/-/g, ''))) {
+      order.phone = line.replace(/-/g, '');
+    } else if (/^[a-zA-Z0-9._]+$/.test(line)) {
+      order.ig = line.trim();
+    } else {
+      order.notes += line + '\n';
     }
-    if (/信箱/.test(line)) report.email = line.replace(/.*信箱[:：]?\s*/, '').trim();
-    if (/門市|地址/.test(line)) report.address = line.replace(/.*[:：]?\s*/, '').trim();
-    if (/盒數/.test(line)) {
-      const match = line.match(/[一二兩三四五六七八九十\d]+/);
-      if (match) {
-        const map = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-        const raw = match[0];
-        report.quantity = /^\d+$/.test(raw) ? parseInt(raw) : (map[raw] || 1);
-      }
-    }
-  });
+  }
 
-  report.notes = lines
-    .filter(l =>
-      !/^報單/.test(l) &&
-      !/^2\d{5}/.test(l) &&
-      !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l) &&
-      l !== report.ig
-    )
-    .join('\n');
+  order.notes = order.notes.trim();
+  return order;
+}
 
-  const today = new Date();
-  report.orderDate = `${today.getMonth() + 1}/${today.getDate()}`;
-
-  return report;
+function parseQuantity(text) {
+  const map = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const match = text.match(/[一二兩三四五六七八九十\d]+/);
+  if (!match) return 1;
+  const raw = match[0];
+  if (/^\d+$/.test(raw)) return parseInt(raw);
+  return map[raw] || 1;
 }
