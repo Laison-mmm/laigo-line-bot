@@ -1,3 +1,4 @@
+
 export default function parseOrder(text) {
   const lines = text.trim().split('\n');
 
@@ -13,26 +14,40 @@ export default function parseOrder(text) {
     notes: '',
   };
 
-  // 嘗試抓詢問日（六碼開頭）
-  const firstLineMatch = lines[0]?.match(/(\d{6})/);
-  if (firstLineMatch) {
-    order.inquiryDate = firstLineMatch[1];
+  // 嘗試抓詢問日（六碼）從所有行
+  for (const line of lines) {
+    if (!order.inquiryDate) {
+      const match = line.match(/\b\d{6}\b/);
+      if (match) order.inquiryDate = match[0];
+    }
   }
 
+  let notesStarted = false;
+
   for (const line of lines) {
-    if (/^姓名[:：]/.test(line)) order.name = line.split(/[:：]/)[1].trim();
-    else if (/^電話[:：]/.test(line)) order.phone = line.split(/[:：]/)[1].replace(/-/g, '').trim();
-    else if (/^信箱[:：]/.test(line)) order.email = line.split(/[:：]/)[1].trim();
-    else if (/^(門市|地址)[:：]/.test(line)) order.address = line.split(/[:：]/)[1].trim();
-    else if (/盒/.test(line)) {
-      order.quantity = parseQuantity(line);
-      order.notes += line + '\n';
-    } else if (/^\d{10}$/.test(line.replace(/-/g, ''))) {
-      order.phone = line.replace(/-/g, '');
-    } else if (/^[a-zA-Z0-9._]+$/.test(line)) {
-      order.ig = line.trim();
+    const trimmed = line.trim();
+    if (/^姓名[:：]/.test(trimmed)) order.name = trimmed.split(/[:：]/)[1].trim();
+    else if (/^電話[:：]/.test(trimmed)) {
+      const number = trimmed.split(/[:：]/)[1].replace(/-/g, '').trim();
+      if (/^\d{9,10}$/.test(number)) order.phone = number.padStart(10, '0');
+    }
+    else if (/^信箱[:：]/.test(trimmed)) order.email = trimmed.split(/[:：]/)[1].trim();
+    else if (/^(門市|地址)[:：]/.test(trimmed)) order.address = trimmed.split(/[:：]/)[1].trim();
+    else if (/盒/.test(trimmed)) {
+      order.quantity = parseQuantity(trimmed);
+      notesStarted = false;
+    } else if (/^[a-zA-Z0-9._]+$/.test(trimmed)) {
+      order.ig = trimmed;
+    } else if (/^\d{9,10}$/.test(trimmed.replace(/-/g, ''))) {
+      order.phone = trimmed.replace(/-/g, '').padStart(10, '0');
     } else {
-      order.notes += line + '\n';
+      // 收集備註：過濾掉報單、付款、日期等無用行
+      if (!/^報單$/.test(trimmed) &&
+          !/^貨到$|^刷卡$/.test(trimmed) &&
+          !/^\d{6}/.test(trimmed) &&
+          !/^價格[:：]/.test(trimmed)) {
+        order.notes += trimmed + '\n';
+      }
     }
   }
 
