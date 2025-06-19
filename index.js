@@ -55,7 +55,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
           continue;
         }
 
-        // 欄位驗證
         const missing = [];
         if (!order.ig) missing.push('IG');
         if (!order.name) missing.push('姓名');
@@ -68,9 +67,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
           continue;
         }
 
-        // ✨ 驗證身份並暫存
         const checkResult = await verifyCustomer(order);
-        const finalOrder = { ...order, ...checkResult };
+        const finalOrder = { ...order, ...checkResult, submitted: false };
         pendingOrders.set(userId, finalOrder);
 
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
@@ -79,29 +77,30 @@ app.post('/webhook', middleware(config), async (req, res) => {
       }
 
       // 🟢 確認送出
-      if (text === '確定' && pendingOrders.has(userId)) {
+      if (text === '確定') {
         const finalOrder = pendingOrders.get(userId);
-        pendingOrders.delete(userId);
+        if (!finalOrder || finalOrder.submitted) {
+          console.warn('⚠️ 已送出或資料不存在，跳過');
+          continue;
+        }
 
         try {
-          const result = await writeToSheet(finalOrder);
-          console.log('📤 寫入成功：', result);
-
+          finalOrder.submitted = true;
+          await writeToSheet(finalOrder);
           await safePush(userId, {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           });
         } catch (err) {
-          console.error('❌ 寫入錯誤：', err.message);
-
-          if (!err.logged) {
-            err.logged = true; // 防止多次推播
-            await safePush(userId, {
-              type: 'text',
-              text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
-            });
-          }
+          console.error('❌ 寫入錯誤:', err.message);
+          await safePush(userId, {
+            type: 'text',
+            text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
+          });
+        } finally {
+          pendingOrders.delete(userId); // 無論成功或失敗都清掉
         }
+
         continue;
       }
 
@@ -116,7 +115,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
       }
     }
 
-    res.sendStatus(200); // ✅ 保證 webhook 回 200，避免重送
+    res.sendStatus(200); // ✅ 保證 webhook 回 200，避免 LINE 重送
   } catch (err) {
     console.error('❌ webhook 全域錯誤:', err);
     res.sendStatus(200); // ❗照樣回 200，讓 LINE 不重送
