@@ -1,10 +1,8 @@
-// 主 webhook 入口（強化版）
 const express = require('express');
 const { middleware, Client } = require('@line/bot-sdk');
 const dotenv = require('dotenv');
 const { parseOrder } = require('./parser');
 const { verifyCustomer } = require('./verifyCustomer');
-const { saveCache, getCache, clearCache } = require('./confirmCache');
 const { writeToSheet } = require('./sheetWriter');
 
 dotenv.config();
@@ -19,69 +17,80 @@ const client = new Client(config);
 const pendingOrders = new Map();
 
 app.post('/webhook', middleware(config), async (req, res) => {
-  console.log('✅ 收到 LINE webhook 請求');
   const events = req.body.events;
 
   for (const event of events) {
     try {
-      console.log('📥 處理事件：', event);
+      const text = event.message?.text?.trim();
+      const userId = event.source?.userId;
+      const replyToken = event.replyToken;
 
-      if (event.type === 'message' && event.message.type === 'text') {
-        const text = event.message.text.trim();
-        const userId = event.source.userId;
-        console.log('✉️ 收到訊息：', text, 'from user:', userId);
+      if (!text || !userId || !replyToken) continue;
 
-        if (text.startsWith('報單')) {
-          const order = parseOrder(text);
+      if (text.startsWith('報單')) {
+        const order = parseOrder(text);
 
-          const missingFields = [];
-          if (!order.ig) missingFields.push('IG');
-          if (!order.name) missingFields.push('姓名');
-          if (!order.phone) missingFields.push('電話');
-          if (!order.inquiryDate) missingFields.push('詢問日');
-          if (!order.quantity) missingFields.push('盒數');
+        // 欄位驗證
+        const missingFields = [];
+        if (!order.ig) missingFields.push('IG');
+        if (!order.name) missingFields.push('姓名');
+        if (!order.phone) missingFields.push('電話');
+        if (!order.inquiryDate) missingFields.push('詢問日');
+        if (!order.quantity) missingFields.push('盒數');
 
-          if (missingFields.length > 0) {
-            const msg = `❌ 資料不完整，缺少【${missingFields.join('、')}】`;
-            await client.replyMessage(event.replyToken, { type: 'text', text: msg });
-            continue;
-          }
-
-          const checkResult = await verifyCustomer(order);
-          const finalOrder = { ...order, ...checkResult };
-          pendingOrders.set(userId, finalOrder);
-          console.log('📝 儲存暫存報單：', finalOrder);
-
-          const previewLine = `${finalOrder.level || ''} ${finalOrder.inquiryDate} ${finalOrder.previewText || ''}`.trim();
-          const preview = `👤 ${previewLine}｜${finalOrder.name}
-這筆資料要送出嗎？
-✅ 請輸入「確定」
-❌ 輸入「取消」將清除報單`;
-          await client.replyMessage(event.replyToken, { type: 'text', text: preview });
+        if (missingFields.length > 0) {
+          await client.replyMessage(replyToken, {
+            type: 'text',
+            text: `❌ 資料不完整，缺少【${missingFields.join('、')}】`,
+          });
+          continue;
         }
 
-        if (text === '確定' && pendingOrders.has(userId)) {
-          const finalOrder = pendingOrders.get(userId);
-          pendingOrders.delete(userId);
+        // 儲存暫存 + 預覽訊息（只 reply 一次）
+        const checkResult = await verifyCustomer(order);
+        const finalOrder = { ...order, ...checkResult };
+        pendingOrders.set(userId, finalOrder);
+
+        const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 輸入「取消」將清除報單`;
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: preview,
+        });
+        continue;
+      }
+
+      // 確定送出
+      if (text === '確定' && pendingOrders.has(userId)) {
+        const finalOrder = pendingOrders.get(userId);
+        pendingOrders.delete(userId);
+
+        try {
           const result = await writeToSheet(finalOrder);
-          await client.replyMessage(event.replyToken, { type: 'text', text: result });
+          await client.pushMessage(userId, {
+            type: 'text',
+            text: `✅ 報單成功：${finalOrder.name} 已完成登記`,
+          });
+        } catch (err) {
+          console.error('❌ 寫入表單錯誤:', err);
+          await client.pushMessage(userId, {
+            type: 'text',
+            text: `❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服`,
+          });
         }
+        continue;
+      }
 
-        if (text === '取消' && pendingOrders.has(userId)) {
-          pendingOrders.delete(userId);
-          await client.replyMessage(event.replyToken, { type: 'text', text: '❌ 已取消報單' });
-        }
+      // 取消報單
+      if (text === '取消' && pendingOrders.has(userId)) {
+        pendingOrders.delete(userId);
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: '❌ 已取消報單',
+        });
+        continue;
       }
     } catch (err) {
-      console.error('❌ 處理事件失敗：', err);
-      try {
-        await client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '❌ 系統錯誤，請稍後再試',
-        });
-      } catch (replyErr) {
-        console.error('❌ 回覆用戶時出錯：', replyErr);
-      }
+      console.error('❌ 處理 webhook 錯誤：', err);
     }
   }
 
