@@ -9,18 +9,15 @@ export default async function verifyCustomer(order) {
 
   const todayCode = getTodayCode();
 
+  // 呼叫 Google Sheet Web API（回傳為 JSON 陣列）
   const res = await fetch(process.env.SHEET_API_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet 資料');
 
-  const csv = await res.text();
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error('❌ 資料格式錯誤，應為陣列');
 
-  // ✅ 防呆處理：只處理合法的行（包含逗號），並轉換成欄位陣列
-  const rows = csv
-    .trim()
-    .split('\n')
-    .filter(line => typeof line === 'string' && line.includes(','))
-    .map(line => line.split(',').map(cell => cell.trim()))
-    .filter(row => row.length >= 6); // 至少要有 IG, 姓名, 電話
+  // 資料為陣列：每一列 = 一個 row（第一列為標題）
+  const rows = data.slice(1); // 去掉標題列
 
   const clean = (str) => String(str || '').trim();
 
@@ -31,8 +28,8 @@ export default async function verifyCustomer(order) {
   );
 
   if (rowIndex !== -1) {
-    console.log('✅ 判定為回購：', { ig, name, phone, rowIndex });
-    return { level: '已回購', rowIndex };
+    console.log('✅ 判定為回購：', { ig, name, phone, rowIndex: rowIndex + 1 });
+    return { level: '已回購', rowIndex: rowIndex + 1 }; // rowIndex +1 是因為表格實際是從 1 開始
   }
 
   const level = inquiryDate === todayCode ? '新客' : '追蹤';
