@@ -1,53 +1,60 @@
+// ✅ parseOrder.js 改版 - 強化 notes 與日期格式處理
 const CHINESE_NUM_MAP = {
-  '一': 1, '二': 2, '兩': 2, '三': 3,
-  '四': 4, '五': 5, '六': 6, '七': 7,
-  '八': 8, '九': 9, '十': 10
+  '一': 1, '二': 2, '兩': 2, '三': 3, '四': 4,
+  '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10
 };
 
 export default function parseOrder(text) {
-  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const today = new Date();
-  const orderDate = today.toLocaleDateString('zh-TW');
-  const todayCode = `${String(today.getFullYear()).slice(2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+  const orderDate = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
 
   let report = {
-    ig: '', name: '', phone: '', inquiryDate: '', previewText: '',
-    quantity: 1, orderDate, notes: text.trim()
+    inquiryDate: '',
+    previewText: '',
+    ig: '',
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    quantity: 1,
+    orderDate,
+    notes: ''
   };
 
-  for (let line of lines) {
-    // 抓六碼開頭當作詢問日（例：250618 明天見）
+  lines.forEach((line, index) => {
+    // 詢問日 + 預覽文
     if (/^2\d{5}(?![\d\/])/.test(line) && !report.inquiryDate) {
-      const match = line.match(/^(\d{6})\s*(.*)/);
-      if (match) {
-        report.inquiryDate = match[1];
-        report.previewText = match[2]?.trim() || '';
+      const m = line.match(/^(\d{6})\s*(.*)/);
+      if (m) {
+        report.inquiryDate = m[1];
+        report.previewText = m[2] || '';
       }
     }
-
     // 姓名
-    if (/姓名[:：]/.test(line)) {
-      report.name = line.split(/[:：]/)[1]?.trim() || '';
+    if (line.includes('姓名')) {
+      report.name = line.split('姓名')[1]?.replace(/[:：]/, '').trim();
     }
-
     // 電話
-    if (/電話[:：]/.test(line)) {
-      report.phone = line.split(/[:：]/)[1]?.replace(/[-\s]/g, '').trim() || '';
+    if (line.includes('電話')) {
+      report.phone = line.split('電話')[1]?.replace(/[:：]/, '').replace(/[-\s]/g, '').trim();
     }
-
-    // IG 帳號
-    if (/^[a-zA-Z0-9._]{4,}$/.test(line) && !report.ig) {
-      report.ig = line;
+    // 信箱
+    if (line.includes('信箱')) {
+      report.email = line.split('信箱')[1]?.replace(/[:：]/, '').trim();
     }
-
-    // 盒數解析（中英皆可）
-    if (line.includes('盒')) {
-      const numMatch = line.match(/(\d+)\s*盒/);
-      if (numMatch) {
-        report.quantity = parseInt(numMatch[1]);
+    // 地址
+    if (line.includes('門市') || line.includes('地址')) {
+      report.address = line.split('：')[1]?.trim();
+    }
+    // 盒數
+    if (line.includes('盒數')) {
+      const qtyText = line.split('盒數')[1]?.replace(/[:：]/, '').replace(/[^\u4e00-\u9fa5\d]/g, '') || '';
+      const match = qtyText.match(/\d+/);
+      if (match) {
+        report.quantity = parseInt(match[0]);
       } else {
-        const chineseText = line.replace(/[^一二三四五六七八九十兩]/g, '');
-        for (let ch of chineseText) {
+        for (let ch of qtyText) {
           if (CHINESE_NUM_MAP[ch]) {
             report.quantity = CHINESE_NUM_MAP[ch];
             break;
@@ -55,7 +62,15 @@ export default function parseOrder(text) {
         }
       }
     }
-  }
+    // IG 帳號（僅限英數混合，長度 4 以上）
+    if (/^[a-zA-Z0-9._]{4,}$/.test(line) && !report.ig) {
+      report.ig = line;
+    }
+  });
+
+  // 補 notes（只抓症狀段）
+  const noteStart = lines.findIndex(l => l.match(/^姓名[:：]/)) - 3;
+  report.notes = lines.slice(Math.max(1, noteStart), noteStart + 3).join('\n');
 
   return report;
 }
