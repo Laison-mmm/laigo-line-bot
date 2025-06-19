@@ -68,7 +68,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const result = await writeToSheet(finalOrder);
           await client.pushMessage(userId, {
             type: 'text',
-            text: `✅ 報單成功：${finalOrder.name} 已完成登記`,
+            text: `✅ 報單成功：${finalOrder.name} 已完成`,
           });
         } catch (err) {
           console.error('❌ 寫入表單錯誤:', err);
