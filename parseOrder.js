@@ -12,11 +12,11 @@ export default function parseOrder(text) {
 
   let report = {
     ig: '', name: '', phone: '', email: '', address: '',
-    inquiryDate: '', previewText: '', quantity: 1, orderDate, notes: ''
+    inquiryDate: '', previewText: '', quantity: 1,
+    orderDate, notes: ''
   };
 
   for (let line of lines) {
-    // ✅ 擷取詢問日（六碼）與說明（如：明天見）
     if (/^2\d{5}(?![\d\/])/.test(line) && !report.inquiryDate) {
       const match = line.match(/^(\d{6})\s*(.*)/);
       if (match) {
@@ -32,7 +32,7 @@ export default function parseOrder(text) {
     if (/電話[:：]/.test(line)) {
       let phone = line.split(/[:：]/)[1]?.replace(/[-\s]/g, '').trim() || '';
       if (/^\d{9}$/.test(phone)) phone = '0' + phone;
-      if (!/^\d{10}$/.test(phone)) phone = ''; // ❌ 防呆：非10碼一律清空
+      if (!/^\d{10}$/.test(phone)) phone = '';
       report.phone = phone;
     }
 
@@ -49,7 +49,6 @@ export default function parseOrder(text) {
     }
 
     if (line.includes('盒')) {
-      // 支援「8盒」或「雙藻錠八盒」
       const numMatch = line.match(/(\d+)\s*盒/);
       if (numMatch) {
         report.quantity = parseInt(numMatch[1]);
@@ -65,17 +64,13 @@ export default function parseOrder(text) {
     }
   }
 
-  // ✅ notes 欄位：排除系統欄位關鍵字，保留自然語句
   report.notes = lines
     .filter(l =>
       !/^報單/.test(l) &&
-      !/^2\d{5}/.test(l) && // 詢問日行
+      !/^2\d{5}/.test(l) &&
       !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l)
     )
     .join('\n');
-
-  // ✅ 防呆補齊：若詢問日未抓到，預設用今日碼
-  if (!report.inquiryDate) report.inquiryDate = todayCode;
 
   return report;
 }
