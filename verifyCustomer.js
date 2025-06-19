@@ -1,5 +1,4 @@
 // ✅ 最新版 verifyCustomer.js
-import { getTodayCode } from './utils/dateUtil.js';
 import { getSheetData } from './utils/sheetUtil.js';
 
 const SHEET_NAME = 'Q2買賣';
