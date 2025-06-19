@@ -1,8 +1,3 @@
-// ✅ 最新版 verifyCustomer.js
-import { getSheetData } from './utils/sheetUtil.js';
-
-const SHEET_NAME = 'Q2買賣';
-
 export default async function verifyCustomer(order) {
   const { ig, name, phone, inquiryDate } = order;
 
@@ -10,13 +5,16 @@ export default async function verifyCustomer(order) {
     throw new Error('❌ verifyCustomer：缺少欄位');
   }
 
-  const sheet = await getSheetData(SHEET_NAME);
-  const matched = sheet.find(row =>
-    row[3] === ig && row[4] === name && row[5] === phone
-  );
-
-  const todayCode = getTodayCode(); // 取得 yyMMdd
-  const level = matched ? '已回購' : (inquiryDate === todayCode ? '新客' : '追蹤');
+  const todayCode = getTodayCode();
+  const level = inquiryDate === todayCode ? '新客' : '追蹤';
 
   return { level };
+}
+
+function getTodayCode() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}`; // ➜ 例如 '250619'
 }
