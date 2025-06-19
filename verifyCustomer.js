@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 
-const SHEET_URL = process.env.SHEET_API_URL; // 用於 POST 寫入
-const CSV_URL = process.env.SHEET_API_URL_CSV; // 用於 GET 取得試算表資料
+const SHEET_URL = process.env.SHEET_API_URL;
+const CSV_URL = process.env.SHEET_API_URL_CSV;
 
 export default async function verifyCustomer(order) {
   if (!order.phone || !order.ig || !order.name || !order.inquiryDate) {
@@ -14,7 +14,6 @@ export default async function verifyCustomer(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(r => r.split(','));
 
-  // 🔧 修正：標準化比對（清掉空白、斷行）
   const clean = str => String(str || '').replace(/\s/g, '');
 
   const rowIndex = rows.findIndex(r =>
@@ -29,9 +28,8 @@ export default async function verifyCustomer(order) {
     return order;
   }
 
-  // 判斷新客 or 追蹤
-  const todayStr = getTodaySixDigit();
-  order.level = order.inquiryDate === todayStr ? '新客' : '追蹤';
+  const todayCode = getTodaySixDigit();
+  order.level = order.inquiryDate === todayCode ? '新客' : '追蹤';
   return order;
 }
 
