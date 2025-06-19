@@ -1,110 +1,72 @@
-import fetch from 'node-fetch';
-import { normalizePhone } from './utils.js';
+import { google } from 'googleapis';
+import { auth } from './googleAuth.js';
+import dayjs from 'dayjs';
 
-const SHEET_CSV_URL = process.env.SHEET_API_URL;
-const SHEET_WRITE_URL = process.env.SHEET_API_URL;
-const START_COL = 11;
-const MAX_GROUPS = 6;
+const SHEET_NAME = 'Q2買賣';
+const PRODUCT_NAME = '雙藻🌿';
+const CHANNEL = 'IG';
 
-function normalize(str) {
-  return normalizePhone(String(str || '').replace(/\s/g, ''));
-}
+export async function writeToSheet(order) {
+  const sheets = google.sheets({ version: 'v4', auth });
 
-export default async function writeToSheet(order) {
-  order.level = order.level || '追蹤';
-  order.channel = order.channel || 'IG';
-  order.orderDate = order.orderDate || getTodayDate();
-  order.product = order.product || '雙藻🌿';
-  order.notes = order.notes || '';
+  try {
+    const { rowIndex, level } = order;
+    const getRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.SHEET_ID,
+      range: `${SHEET_NAME}!A1:AA`,
+    });
 
-  const res = await fetch(SHEET_CSV_URL);
-  if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
-  const csv = await res.text();
-  const rows = csv.trim().split('\n').map(row => row.split(','));
+    const rows = getRes.data.values || [];
 
-  // ✅ 使用 verifyCustomer 傳入的 rowIndex（不要再 +1）
-  if (order.level === '已回購' && order.rowIndex != null) {
-    const verifyRow = rows[order.rowIndex];
-    if (!verifyRow) {
-      console.error('❌ 找不到 rowIndex 對應行:', order.rowIndex, rows.length);
-      throw new Error('❌ rowIndex 指到空行，資料不一致');
+    // 1️⃣ rowIndex 防呆：如果越界或行為空，直接報錯
+    if (rowIndex === undefined || rowIndex + 1 >= rows.length || !rows[rowIndex + 1]) {
+      throw new Error(`❌ rowIndex 超出範圍或空行：rowIndex=${rowIndex}, total=${rows.length}`);
     }
 
-    for (let g = 0; g < MAX_GROUPS; g++) {
-      const start = START_COL + g * 3;
-      if (!verifyRow[start] && !verifyRow[start + 1] && !verifyRow[start + 2]) {
-        const payload = {
-          type: 'repurchase',
-          rowIndex: order.rowIndex,
-          startCol: start + 1,
-          orderDate: order.orderDate,
-          product: order.product,
-          quantity: order.quantity
-        };
-        return await postToSheet(payload);
-      }
+    const today = dayjs().format('M/D');
+    const row = rows[rowIndex + 1]; // 實際行，因 A1 是表頭
+    const updateRange = `${SHEET_NAME}!K${rowIndex + 2}:M${rowIndex + 2}`; // 寫入 K ~ M 欄
+
+    // 2️⃣ 找回購欄位（每 3 欄為一組）
+    let startCol = 10; // 從 K 開始
+    while (row[startCol] && row[startCol + 1] && row[startCol + 2]) {
+      startCol += 3;
     }
-    throw new Error('❌ 回購欄位已滿（verify row）');
+
+    const colLetter = indexToColumn(startCol); // K ~ AA
+    const range = `${SHEET_NAME}!${colLetter}${rowIndex + 2}:${indexToColumn(startCol + 2)}${rowIndex + 2}`;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.SHEET_ID,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[today, PRODUCT_NAME, order.quantity]],
+      },
+    });
+
+    // 3️⃣ 等級改成已回購
+    const levelCell = `${SHEET_NAME}!A${rowIndex + 2}`;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.SHEET_ID,
+      range: levelCell,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [['已回購']],
+      },
+    });
+
+    return { success: true };
+  } catch (err) {
+    throw new Error(`❌ 寫入失敗（sheetWriter）：${err.message}`);
   }
+}
 
-  // fallback：若 verify 沒傳 rowIndex ➜ 自行從 CSV 比對
-  const rowIndex = rows.findIndex(r =>
-    normalize(r[3]) === normalize(order.ig) &&
-    normalize(r[4]) === normalize(order.name) &&
-    normalize(r[5]) === normalize(order.phone)
-  );
-
-  if (rowIndex !== -1) {
-    const row = rows[rowIndex];
-    for (let g = 0; g < MAX_GROUPS; g++) {
-      const start = START_COL + g * 3;
-      if (!row[start] && !row[start + 1] && !row[start + 2]) {
-        const payload = {
-          type: 'repurchase',
-          rowIndex,
-          startCol: start + 1,
-          orderDate: order.orderDate,
-          product: order.product,
-          quantity: order.quantity
-        };
-        return await postToSheet(payload);
-      }
-    }
-    throw new Error('❌ 回購欄位已滿（fallback row）');
+function indexToColumn(index) {
+  let s = '', t = index;
+  while (t >= 0) {
+    s = String.fromCharCode((t % 26) + 65) + s;
+    t = Math.floor(t / 26) - 1;
   }
-
-  // ➜ 新客資料寫入
-  const payload = {
-    type: 'new',
-    level: order.level,
-    channel: order.channel,
-    inquiryDate: order.inquiryDate,
-    ig: order.ig,
-    name: order.name,
-    phone: order.phone,
-    orderDate: order.orderDate,
-    product: order.product,
-    quantity: order.quantity,
-    notes: order.notes,
-  };
-
-  return await postToSheet(payload);
-}
-
-async function postToSheet(payload) {
-  const res = await fetch(SHEET_WRITE_URL, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' },
-  });
-
-  const text = await res.text();
-  console.log('📤 GAS 回應：', text);
-  if (!res.ok || text.includes('❌')) throw new Error(text);
-  return text;
-}
-
-function getTodayDate() {
-  const d = new Date();
-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  return s;
 }
