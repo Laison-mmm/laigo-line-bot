@@ -1,10 +1,9 @@
 import fetch from 'node-fetch';
 
-const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzqgsK4hAxZfsiK3glYLHN3xvYJ_2O3_XJTnUNjVtQ4XPFNSD8VI5xWUD5UuRk-bwwL/exec';
+const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzROTjKZ2_vFT0SOPnKtJLCM2lPGu993RM1mrskK-ZiBIEYawoZwAw06f0SvD4Xb3D2IQ/exec';
 const PRODUCT_NAME = '雙藻🌿';
 const CHANNEL = 'IG';
 
-// 工具：轉中文數字
 function parseChineseNumber(text) {
   const map = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
   const match = text.match(/[一二兩三四五六七八九十\d]+/);
@@ -14,11 +13,19 @@ function parseChineseNumber(text) {
   return map[raw] || 1;
 }
 
-// 主函式：驗證是否為回購
 export default async function verifyCustomer(order) {
   try {
+    console.log('🌐 使用的 SHEET_API_URL：', SHEET_API_URL);
     const res = await fetch(SHEET_API_URL);
-    const rows = await res.json();
+    const raw = await res.text();
+
+    let rows;
+    try {
+      rows = JSON.parse(raw);
+    } catch (jsonErr) {
+      console.error('❌ 回傳不是 JSON，實際內容：', raw.slice(0, 100));
+      throw new Error('❌ 回傳內容非 JSON，請檢查 doGet 或網址是否正確');
+    }
 
     const header = rows[0];
     const data = rows.slice(1);
@@ -34,8 +41,8 @@ export default async function verifyCustomer(order) {
     );
 
     if (rowIndex !== -1) {
-      const baseRow = rowIndex + 1; // 因為 getRange 是 1-based
-      const offset = 10 + (3 * getRepurchaseIndex(data[rowIndex])); // 找到第幾組空回購欄位
+      const baseRow = rowIndex + 1;
+      const offset = 10 + (3 * getRepurchaseIndex(data[rowIndex]));
       return {
         type: 'repurchase',
         rowIndex: baseRow,
@@ -46,7 +53,6 @@ export default async function verifyCustomer(order) {
       };
     }
 
-    // 新客 or 追蹤
     const level = decideLevel(data, order);
     return {
       type: 'new',
@@ -68,7 +74,6 @@ export default async function verifyCustomer(order) {
   }
 }
 
-// 工具：回購寫入位置（從第11欄開始，每組3欄）
 function getRepurchaseIndex(row) {
   for (let i = 10; i < row.length; i += 3) {
     if (!row[i] && !row[i + 1] && !row[i + 2]) return (i - 10) / 3;
@@ -76,7 +81,6 @@ function getRepurchaseIndex(row) {
   return 0;
 }
 
-// 工具：決定新客 or 追蹤
 function decideLevel(data, order) {
   const exists = data.some(row =>
     row.includes(order.ig) || row.includes(order.name) || row.includes(order.phone)
