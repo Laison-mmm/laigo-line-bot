@@ -36,12 +36,16 @@ export default function parseOrder(text) {
 
     report.notes = lines.filter(l =>
       !/^報單/.test(l) &&
+      !/^貨到|刷卡/.test(l) &&
       !/^2\d{5}/.test(l) &&
       !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l) &&
       !/^[a-zA-Z0-9._]{4,}$/.test(l)
     ).join('\n');
 
-    if (!report.phone) throw new Error('⚠️ 電話格式錯誤：未能解析為 10 碼號碼');
+    // 電話強制 10 碼驗證
+    if (!report.phone || report.phone.length !== 10) {
+      throw new Error('📛 電話格式錯誤：' + report.phone);
+    }
 
     return report;
   } catch (err) {
