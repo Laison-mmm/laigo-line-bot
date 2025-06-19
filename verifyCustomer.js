@@ -7,32 +7,33 @@ export async function verifyCustomer(order) {
   const res = await fetch(SHEET_CSV_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
-  // ✅ 正確解析 CSV
-  const csv = await res.text();
-  const rows = csv.trim().split('\n').map(r => r.split(','));
+  const json = await res.text();
+  const rows = JSON.parse(json);
 
   const clean = str => String(str || '').replace(/\s/g, '').trim();
+  const normalizePhone = phone => clean(phone).replace(/^(\+?886|886)/, '0'); // +886917 ➜ 0917
 
-  // ✅ 比對「姓名 + 電話」
+  const orderName = clean(order.name);
+  const orderPhone = normalizePhone(order.phone);
+
   const matchedRows = rows
     .map((r, i) => ({ row: r, index: i }))
     .filter(({ row }) =>
-      clean(row[4]) === clean(order.name) &&
-      clean(row[5]) === clean(order.phone)
+      clean(row[4]) === orderName &&
+      normalizePhone(row[5]) === orderPhone
     );
 
   if (matchedRows.length > 0) {
-    const { row, index } = matchedRows.at(-1); // ✅ 找到最後一筆相同的資料
+    const { row, index } = matchedRows.at(-1); // ➜ 最後一筆相符的為主
     for (let g = 0; g < MAX_GROUPS; g++) {
       const base = 10 + g * 3;
       const isEmpty = !row[base] && !row[base + 1] && !row[base + 2];
       if (isEmpty) {
-        return { type: 'repurchase', rowIndex: index + 1 }; // 注意：rowIndex 是從 1 開始
+        return { type: 'repurchase', rowIndex: index + 1 };
       }
     }
     throw new Error('❌ 回購欄位已滿，無法再寫入');
   }
 
-  // 🆕 沒找到，視為新客或追蹤
   return { type: 'new', rowIndex: null };
 }
