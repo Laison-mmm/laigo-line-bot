@@ -22,10 +22,13 @@ export default async function writeToSheet(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(row => row.split(','));
 
-  // ✅ 優先使用 verifyCustomer 提供的 rowIndex（GAS 是從第2列 = index 1 開始）
+  // ✅ 使用 verifyCustomer 傳入的 rowIndex（不要再 +1）
   if (order.level === '已回購' && order.rowIndex != null) {
-    const verifyRow = rows[order.rowIndex + 1]; // 加 +1 對齊
-    if (!verifyRow) throw new Error('❌ rowIndex 指到空行，資料不一致');
+    const verifyRow = rows[order.rowIndex];
+    if (!verifyRow) {
+      console.error('❌ 找不到 rowIndex 對應行:', order.rowIndex, rows.length);
+      throw new Error('❌ rowIndex 指到空行，資料不一致');
+    }
 
     for (let g = 0; g < MAX_GROUPS; g++) {
       const start = START_COL + g * 3;
