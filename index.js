@@ -1,10 +1,11 @@
 // 主 webhook 入口（強化版）
-import express from 'express';
-import { middleware, Client } from '@line/bot-sdk';
-import dotenv from 'dotenv';
-import parseOrder from './parseOrder.js';
-import verifyCustomer from './verifyCustomer.js';
-import handleConfirm from './confirmHandler.js';
+const express = require('express');
+const { middleware, Client } = require('@line/bot-sdk');
+const dotenv = require('dotenv');
+const { parseOrder } = require('./parser');
+const { verifyCustomer } = require('./verifyCustomer');
+const { saveCache, getCache, clearCache } = require('./confirmCache');
+const { writeToSheet } = require('./sheetWriter');
 
 dotenv.config();
 
@@ -30,7 +31,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
         const userId = event.source.userId;
         console.log('✉️ 收到訊息：', text, 'from user:', userId);
 
-        // 處理報單
         if (text.startsWith('報單')) {
           const order = parseOrder(text);
           if (!order || !order.ig || !order.name || !order.phone || !order.inquiryDate) {
@@ -46,20 +46,22 @@ app.post('/webhook', middleware(config), async (req, res) => {
           pendingOrders.set(userId, finalOrder);
           console.log('📝 儲存暫存報單：', finalOrder);
 
-          const previewLine = `${finalOrder.level} ${finalOrder.inquiryDate} ${finalOrder.previewText || ''}`.trim();
-          const preview = `👤 ${previewLine}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 輸入「取消」將清除報單`;
+          const previewLine = `${finalOrder.level || ''} ${finalOrder.inquiryDate} ${finalOrder.previewText || ''}`.trim();
+          const preview = `👤 ${previewLine}｜${finalOrder.name}
+這筆資料要送出嗎？
+✅ 請輸入「確定」
+❌ 輸入「取消」將清除報單`;
           await client.replyMessage(event.replyToken, { type: 'text', text: preview });
         }
 
-        // 處理確定送出
         if (text === '確定' && pendingOrders.has(userId)) {
-          console.log('✅ 確認送出報單 for user:', userId);
-          await handleConfirm(userId, pendingOrders, client, event.replyToken);
+          const finalOrder = pendingOrders.get(userId);
+          pendingOrders.delete(userId);
+          const result = await writeToSheet(finalOrder);
+          await client.replyMessage(event.replyToken, { type: 'text', text: result });
         }
 
-        // 處理取消
         if (text === '取消' && pendingOrders.has(userId)) {
-          console.log('🗑️ 取消報單 for user:', userId);
           pendingOrders.delete(userId);
           await client.replyMessage(event.replyToken, { type: 'text', text: '❌ 已取消報單' });
         }
