@@ -5,7 +5,7 @@ const SHEET_WRITE_URL = process.env.SHEET_API_URL;
 const SHEET_NAME = 'Q2買賣';
 const PRODUCT_NAME = '雙藻🌿';
 const CHANNEL = 'IG';
-const MAX_GROUPS = 6; // 每筆最多 6 次回購
+const MAX_GROUPS = 6; // 最多支援 6 次回購（3欄 × 6組）
 
 export async function writeToSheet(order) {
   const res = await fetch(SHEET_CSV_URL);
@@ -13,9 +13,8 @@ export async function writeToSheet(order) {
 
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(r => r.split(','));
-
   const clean = str => String(str || '').replace(/\s/g, '');
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = new Date().toISOString().slice(0, 10);
 
   const rowIndex = rows.findIndex(r =>
     clean(r[3]) === clean(order.ig) ||
@@ -23,14 +22,12 @@ export async function writeToSheet(order) {
     clean(r[5]) === clean(order.phone)
   );
 
-  // ⛔ 檢查必要欄位
   if (!order.ig || !order.name || !order.phone || !order.inquiryDate || !order.quantity) {
     throw new Error('❌ 資料不足（共用檢查）');
   }
 
-  // ✅ 資料清單
   const payload = {
-    sheetName: SHEET_NAME,
+    mode: '',
     data: {
       channel: CHANNEL,
       ig: order.ig,
@@ -45,17 +42,23 @@ export async function writeToSheet(order) {
   };
 
   if (rowIndex !== -1) {
-    // ✅ 已回購：寫入右側空欄，更新主欄為「已回購」
+    // ✅ 回購 ➜ 指定寫入行
     payload.mode = 'appendRight';
-    payload.data.row = rowIndex + 1; // 1-based index
-    return post(payload);
+    payload.data.row = rowIndex + 1;
+
+    console.log('🔁 回購資料送出:', payload);
+    const resultText = await send(payload);
+    return resultText;
   }
 
-  // 🟡 新客 or 追蹤
+  // 🟡 新客 / 追蹤 ➜ 判斷是否今天
   const isToday = isTodayInquiry(order.inquiryDate);
   payload.mode = 'appendNew';
   payload.data.level = isToday ? '新客' : '追蹤';
-  return post(payload);
+
+  console.log('🆕 新客資料送出:', payload);
+  const resultText = await send(payload);
+  return resultText;
 }
 
 function parseQuantity(qtyText) {
@@ -72,12 +75,18 @@ function isTodayInquiry(code) {
   return String(code).includes(mmdd);
 }
 
-async function post(payload) {
+async function send(payload) {
   const res = await fetch(SHEET_WRITE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('❌ 寫入表單失敗（Google Apps Script）');
-  return await res.json();
+
+  const resultText = await res.text();
+  console.log('📄 GAS 回傳結果:', resultText);
+
+  if (!resultText.includes('✅')) {
+    throw new Error(resultText || '❌ GAS 無明確回應');
+  }
+  return resultText;
 }
