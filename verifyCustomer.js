@@ -1,22 +1,26 @@
-// ✅ 修正版 verifyCustomer.js
 import fetch from 'node-fetch';
 
-const SHEET_URL = process.env.SHEET_API_URL;
-const CSV_URL = process.env.SHEET_API_URL_CSV;
+const SHEET_URL = process.env.SHEET_API_URL; // 用於 POST 寫入
+const CSV_URL = process.env.SHEET_API_URL_CSV; // 用於 GET 取得試算表資料
 
 export default async function verifyCustomer(order) {
   if (!order.phone || !order.ig || !order.name || !order.inquiryDate) {
-    throw new Error('❌ 欄位不足（新客）');
+    throw new Error('❌ 欄位不足（verifyCustomer）');
   }
 
   const res = await fetch(CSV_URL);
-  if (!res.ok) throw new Error('❌ 讀取表格失敗');
+  if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(r => r.split(','));
 
+  // 🔧 修正：標準化比對（清掉空白、斷行）
+  const clean = str => String(str || '').replace(/\s/g, '');
+
   const rowIndex = rows.findIndex(r =>
-    r[3] === order.ig && r[4] === order.name && r[5] === order.phone
+    clean(r[3]) === clean(order.ig) &&
+    clean(r[4]) === clean(order.name) &&
+    clean(r[5]) === clean(order.phone)
   );
 
   if (rowIndex !== -1) {
@@ -25,10 +29,9 @@ export default async function verifyCustomer(order) {
     return order;
   }
 
-  // 判斷是新客 or 追蹤
+  // 判斷新客 or 追蹤
   const todayStr = getTodaySixDigit();
   order.level = order.inquiryDate === todayStr ? '新客' : '追蹤';
-
   return order;
 }
 
