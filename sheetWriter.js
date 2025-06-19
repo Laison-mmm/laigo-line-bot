@@ -22,12 +22,14 @@ export default async function writeToSheet(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(row => row.split(','));
 
-  // ✅ 若 verifyCustomer 已傳入 rowIndex，則優先使用（不再重比）
+  // ✅ 優先使用 verifyCustomer 提供的 rowIndex（GAS 是從第2列 = index 1 開始）
   if (order.level === '已回購' && order.rowIndex != null) {
-    const row = rows[order.rowIndex];
+    const verifyRow = rows[order.rowIndex + 1]; // 加 +1 對齊
+    if (!verifyRow) throw new Error('❌ rowIndex 指到空行，資料不一致');
+
     for (let g = 0; g < MAX_GROUPS; g++) {
       const start = START_COL + g * 3;
-      if (!row[start] && !row[start + 1] && !row[start + 2]) {
+      if (!verifyRow[start] && !verifyRow[start + 1] && !verifyRow[start + 2]) {
         const payload = {
           type: 'repurchase',
           rowIndex: order.rowIndex,
@@ -39,10 +41,10 @@ export default async function writeToSheet(order) {
         return await postToSheet(payload);
       }
     }
-    throw new Error('❌ 回購欄位已滿');
+    throw new Error('❌ 回購欄位已滿（verify row）');
   }
 
-  // ⬇️ fallback：verify 沒給 rowIndex ➜ 再自行找一次
+  // fallback：若 verify 沒傳 rowIndex ➜ 自行從 CSV 比對
   const rowIndex = rows.findIndex(r =>
     normalize(r[3]) === normalize(order.ig) &&
     normalize(r[4]) === normalize(order.name) &&
@@ -65,10 +67,10 @@ export default async function writeToSheet(order) {
         return await postToSheet(payload);
       }
     }
-    throw new Error('❌ 回購欄位已滿');
+    throw new Error('❌ 回購欄位已滿（fallback row）');
   }
 
-  // ➜ 新客寫入
+  // ➜ 新客資料寫入
   const payload = {
     type: 'new',
     level: order.level,
