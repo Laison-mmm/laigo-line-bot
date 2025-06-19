@@ -8,10 +8,10 @@ export async function verifyCustomer(order) {
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
   const csv = await res.text();
-  const rows = csv.trim().split('\n').map(r => r.map(c => c.trim()));
+  const rows = csv.trim().split('\n').map(r => r.split(',').map(c => c.trim()));
   const clean = str => String(str || '').replace(/\s/g, '');
 
-  // ✅ 比對 IG or 姓名 or 電話（任一命中即算）
+  // ✅ 比對條件：IG / 姓名 / 電話 任一相符，就視為「回購」
   const matchedRows = rows
     .map((r, i) => ({ row: r, index: i }))
     .filter(({ row }) => {
@@ -19,12 +19,12 @@ export async function verifyCustomer(order) {
         clean(row[3]) === clean(order.ig) ||
         clean(row[4]) === clean(order.name) ||
         clean(row[5]) === clean(order.phone);
-      const notEmpty = row[3] || row[4] || row[5]; // 排除空白列
+      const notEmpty = row[3] || row[4] || row[5]; // 避免誤抓空行
       return hasAnyMatch && notEmpty;
     });
 
   if (matchedRows.length > 0) {
-    const { row, index } = matchedRows.at(-1); // ✅ 取最後一筆符合的
+    const { row, index } = matchedRows.at(-1); // ✅ 永遠取最後一筆匹配（最新）
     for (let g = 0; g < MAX_GROUPS; g++) {
       const base = 10 + g * 3;
       const isEmpty = !row[base] && !row[base + 1] && !row[base + 2];
@@ -35,6 +35,6 @@ export async function verifyCustomer(order) {
     throw new Error('❌ 回購欄位已滿，無法再寫入');
   }
 
-  // ✅ 新客 or 追蹤 ➜ 無符合者
+  // ✅ 沒有符合條件 ➜ 視為新客或追蹤
   return { type: 'new', rowIndex: null };
 }
