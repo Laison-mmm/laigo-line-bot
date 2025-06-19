@@ -7,16 +7,15 @@ const CHINESE_NUM_MAP = {
 export default function parseOrder(text) {
   const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
   const today = new Date();
-  const orderDate = `${today.getMonth() + 1}/${today.getDate()}`; // ✅ m/d 格式
+  const orderDate = `${today.getMonth() + 1}/${today.getDate()}`;
   const todayCode = `${String(today.getFullYear()).slice(2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
 
   let report = {
-    ig: '', name: '', phone: '', inquiryDate: '', previewText: '',
-    quantity: 1, orderDate, notes: ''
+    ig: '', name: '', phone: '', email: '', address: '',
+    inquiryDate: '', previewText: '', quantity: 1, orderDate, notes: ''
   };
 
   for (let line of lines) {
-    // 詢問日：六碼開頭
     if (/^2\d{5}(?![\d\/])/.test(line) && !report.inquiryDate) {
       const match = line.match(/^(\d{6})\s*(.*)/);
       if (match) {
@@ -25,24 +24,28 @@ export default function parseOrder(text) {
       }
     }
 
-    // 姓名
     if (/姓名[:：]/.test(line)) {
       report.name = line.split(/[:：]/)[1]?.trim() || '';
     }
 
-    // 電話（補 0）
     if (/電話[:：]/.test(line)) {
       let phone = line.split(/[:：]/)[1]?.replace(/[-\s]/g, '').trim() || '';
       if (/^\d{9}$/.test(phone)) phone = '0' + phone;
       report.phone = phone;
     }
 
-    // IG 帳號
+    if (/信箱[:：]/.test(line)) {
+      report.email = line.split(/[:：]/)[1]?.trim() || '';
+    }
+
+    if (/^(門市|地址)[:：]/.test(line)) {
+      report.address = line.split(/[:：]/)[1]?.trim() || '';
+    }
+
     if (/^[a-zA-Z0-9._]{4,}$/.test(line) && !report.ig) {
       report.ig = line;
     }
 
-    // 盒數（中英數字轉換）
     if (line.includes('盒')) {
       const numMatch = line.match(/(\d+)\s*盒/);
       if (numMatch) {
@@ -59,12 +62,13 @@ export default function parseOrder(text) {
     }
   }
 
-  // 備註欄保留所有敘述（排除表頭與欄位標籤）
+  // ✅ 備註排除所有表頭與欄位與價格
   report.notes = lines
     .filter(l =>
       !/^報單/.test(l) &&
-      !l.includes('盒數') &&
-      !/姓名|電話|信箱|門市|地址/.test(l)
+      !/^2\d{5}/.test(l) && // 詢問日
+      !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l) &&
+      !/^[a-zA-Z0-9._]{4,}$/.test(l) // IG 行
     )
     .join('\n');
 
