@@ -1,3 +1,5 @@
+const { chineseToNumber } = require('./utils');
+
 function parseOrder(text) {
   const lines = text.split(/\n|\r/).map(l => l.trim()).filter(Boolean);
   const data = {
@@ -14,12 +16,22 @@ function parseOrder(text) {
   };
 
   for (const line of lines) {
-    if (/\d{6}/.test(line)) data.inquiryDate = line.match(/\d{6}/)[0];
+    // ✅ 只抓第一個出現的 6 碼數字作為 inquiryDate（避免 024045 蓋掉）
+    if (!data.inquiryDate && /\d{6}/.test(line)) {
+      data.inquiryDate = line.match(/\d{6}/)[0];
+    }
+
     if (/姓名[:：]/.test(line)) data.name = line.split(/[:：]/)[1];
     if (/電話[:：]/.test(line)) data.phone = line.split(/[:：]/)[1].replace(/[-\s]/g, '');
     if (/信箱[:：]/.test(line)) data.email = line.split(/[:：]/)[1];
     if (/^(門市|地址)/.test(line)) data.address = line.replace(/(門市|地址)[:：]/, '');
-    if (/盒/.test(line)) data.quantity = line.match(/(\d+|[一二兩三四五六七八九十]+)/)?.[0];
+
+    // ✅ 支援中文數字盒數轉換
+    if (/盒/.test(line)) {
+      const match = line.match(/(\d+|[一二兩三四五六七八九十]+)/);
+      if (match) data.quantity = chineseToNumber(match[0]);
+    }
+
     if (/^[a-zA-Z0-9._]+$/.test(line)) data.ig = line;
     if (/價格/.test(line)) data.price = line;
 
@@ -32,4 +44,5 @@ function parseOrder(text) {
 
   return data;
 }
+
 module.exports = { parseOrder };
