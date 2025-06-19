@@ -11,27 +11,30 @@ export async function verifyCustomer(order) {
   const rows = csv.trim().split('\n').map(r => r.split(','));
   const clean = str => String(str || '').replace(/\s/g, '').trim();
 
-  // ✅ 找出所有符合 IG + 姓名 + 電話 的行
-  const matchedRows = rows
+  // ✅ 找到第一筆符合的主資料（只能是新客 / 追蹤）
+  const matched = rows
     .map((r, i) => ({ row: r, index: i }))
-    .filter(({ row }) =>
+    .find(({ row }) =>
+      (row[0] === '新客' || row[0] === '追蹤') &&  // ✅ 只限主資料
       clean(row[3]) === clean(order.ig) &&
       clean(row[4]) === clean(order.name) &&
       clean(row[5]) === clean(order.phone)
     );
 
-  if (matchedRows.length > 0) {
-    const { row, index } = matchedRows.at(-1); // ✅ 取最後一筆
+  if (matched) {
+    const { row, index } = matched;
+
     for (let g = 0; g < MAX_GROUPS; g++) {
       const base = 10 + g * 3;
       const isEmpty = !row[base] && !row[base + 1] && !row[base + 2];
       if (isEmpty) {
-        return { type: 'repurchase', rowIndex: index + 1 };
+        return { type: 'repurchase', rowIndex: index + 1 }; // ✅ 回傳正確 rowIndex
       }
     }
+
     throw new Error('❌ 回購欄位已滿，無法再寫入');
   }
 
-  // ✅ 新客 or 追蹤
+  // ✅ 新客 or 追蹤 ➜ 交由 sheetWriter 判斷日期
   return { type: 'new', rowIndex: null };
 }
