@@ -9,6 +9,9 @@ export default async function verifyCustomer(order) {
     throw new Error('❌ 欄位不足（verifyCustomer）');
   }
 
+  // 預設清空 level，防止上游殘值影響
+  order.level = '未定';
+
   const res = await fetch(CSV_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
