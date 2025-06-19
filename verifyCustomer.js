@@ -7,11 +7,10 @@ export async function verifyCustomer(order) {
   const res = await fetch(SHEET_CSV_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
-  const json = await res.text();
-  const rows = await res.json(); // ✅ 直接解析 JSON 資料
+  const rows = await res.json(); // ✅ 正確：直接解析 JSON
 
   const clean = str => String(str || '').replace(/\s/g, '').trim();
-  const normalizePhone = phone => clean(phone).replace(/^(\+?886|886)/, '0'); // +886917 ➜ 0917
+  const normalizePhone = phone => clean(phone).replace(/^(\+?886|886)/, '0'); // 處理 +886
 
   const orderName = clean(order.name);
   const orderPhone = normalizePhone(order.phone);
@@ -24,7 +23,7 @@ export async function verifyCustomer(order) {
     );
 
   if (matchedRows.length > 0) {
-    const { row, index } = matchedRows.at(-1); // ➜ 最後一筆相符的為主
+    const { row, index } = matchedRows.at(-1); // 最新一筆比對為主
     for (let g = 0; g < MAX_GROUPS; g++) {
       const base = 10 + g * 3;
       const isEmpty = !row[base] && !row[base + 1] && !row[base + 2];
