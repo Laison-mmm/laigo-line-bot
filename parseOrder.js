@@ -1,4 +1,3 @@
-// ✅ parseOrder.js（修正版：加入防錯處理）
 import { normalizePhone } from './utils.js';
 
 const CHINESE_NUM_MAP = {
@@ -41,6 +40,8 @@ export default function parseOrder(text) {
       !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l) &&
       !/^[a-zA-Z0-9._]{4,}$/.test(l)
     ).join('\n');
+
+    if (!report.phone) throw new Error('⚠️ 電話格式錯誤：未能解析為 10 碼號碼');
 
     return report;
   } catch (err) {

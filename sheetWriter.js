@@ -1,13 +1,16 @@
-// ✅ 完整修正版 sheetWriter.js
 import fetch from 'node-fetch';
+import { normalizePhone } from './utils.js';
 
 const SHEET_CSV_URL = process.env.SHEET_API_URL;
 const SHEET_WRITE_URL = process.env.SHEET_API_URL;
 const START_COL = 11;
 const MAX_GROUPS = 6;
 
+function normalize(str) {
+  return normalizePhone(String(str || '').replace(/\s/g, ''));
+}
+
 export default async function writeToSheet(order) {
-  // 補值保險
   order.level = order.level || '追蹤';
   order.channel = order.channel || 'IG';
   order.orderDate = order.orderDate || getTodayDate();
@@ -20,7 +23,9 @@ export default async function writeToSheet(order) {
   const rows = csv.trim().split('\n').map(row => row.split(','));
 
   const rowIndex = rows.findIndex(r =>
-    r[3] === order.ig && r[4] === order.name && r[5] === order.phone
+    normalize(r[3]) === normalize(order.ig) &&
+    normalize(r[4]) === normalize(order.name) &&
+    normalize(r[5]) === normalize(order.phone)
   );
 
   if (rowIndex !== -1) {
