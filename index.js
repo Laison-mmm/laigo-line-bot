@@ -33,11 +33,17 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         if (text.startsWith('報單')) {
           const order = parseOrder(text);
-          if (!order || !order.ig || !order.name || !order.phone || !order.inquiryDate) {
-            await client.replyMessage(event.replyToken, {
-              type: 'text',
-              text: '❌ 報單資料不完整（IG、姓名、電話、詢問日）',
-            });
+
+          const missingFields = [];
+          if (!order.ig) missingFields.push('IG');
+          if (!order.name) missingFields.push('姓名');
+          if (!order.phone) missingFields.push('電話');
+          if (!order.inquiryDate) missingFields.push('詢問日');
+          if (!order.quantity) missingFields.push('盒數');
+
+          if (missingFields.length > 0) {
+            const msg = `❌ 資料不完整，缺少【${missingFields.join('、')}】`;
+            await client.replyMessage(event.replyToken, { type: 'text', text: msg });
             continue;
           }
 
