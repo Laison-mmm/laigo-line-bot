@@ -1,54 +1,59 @@
-const CHINESE_NUM_MAP = {
-  '一': 1, '二': 2, '兩': 2, '三': 3, '四': 4,
-  '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10
-};
+// ✅ parseOrder.js（已修正：正確抓 inquiryDate 與 preview）
 
-export default function parseOrder(text) {
-  const lines = text.trim().split('\n');
-  const today = new Date().toLocaleDateString('zh-TW');
-  let inquiryDate = '', previewText = '', ig = '', quantity = 1;
+function parseOrder(msg) {
+  const lines = msg.split('\n').map(l => l.trim()).filter(Boolean);
+  const order = {
+    inquiryDate: '',
+    previewText: '',
+    ig: '',
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    quantity: 1,
+    notes: '',
+  };
 
-  for (let line of lines) {
-    const match = line.match(/^2\d{5}\s*(.*)/); // 合法六碼詢問日開頭
-    if (match) {
-      inquiryDate = line.slice(0, 6);
-      previewText = match[1]?.trim() || '';
+  const CHINESE_NUM_MAP = {
+    '一': 1, '二': 2, '兩': 2, '三': 3, '四': 4,
+    '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10
+  };
+
+  lines.forEach((line, i) => {
+    order.notes += line + ' ';
+
+    // 🔍 抓 inquiryDate（6 碼）
+    if (/^\d{6}(\s+.*)?$/.test(line) && !order.inquiryDate) {
+      const [code, preview] = line.split(/\s+/, 2);
+      order.inquiryDate = code;
+      order.previewText = preview || '';
     }
-    if (!ig && /^[a-zA-Z0-9._]{4,}$/.test(line)) ig = line.trim();
+
+    if (line.includes('姓名')) order.name = line.split('姓名：')[1]?.trim();
+    if (line.includes('電話')) order.phone = line.split('電話：')[1]?.replace(/[-\s]/g, '').trim();
+    if (line.includes('信箱')) order.email = line.split('信箱：')[1]?.trim();
+    if (line.includes('門市') || line.includes('地址')) order.address = line.split('：')[1]?.trim();
+
+    // 🔢 抓盒數
     if (line.includes('盒數')) {
-      const raw = line.split('盒數：')[1]?.replace(/[^\u4e00-\u9fa5\d]/g, '') || '';
-      const num = raw.match(/\d+/);
-      if (num) quantity = parseInt(num[0]);
+      const qtyText = line.split('盒數：')[1]?.replace(/[^一-龥\d]/g, '') || '';
+      const digit = qtyText.match(/\d+/);
+      if (digit) order.quantity = parseInt(digit[0]);
       else {
-        for (let ch of raw) {
+        for (let ch of qtyText) {
           if (CHINESE_NUM_MAP[ch]) {
-            quantity = CHINESE_NUM_MAP[ch];
+            order.quantity = CHINESE_NUM_MAP[ch];
             break;
           }
         }
       }
     }
-  }
 
-  const get = (key) => lines.find(l => l.startsWith(key))?.split('：')[1]?.trim() || '';
-  const name = get('姓名');
-  const phone = get('電話')?.replace(/[-\s]/g, '') || '';
-  const email = get('信箱');
-  const address = get('門市') || get('地址');
-  const product = lines.find(l => l.includes('雙藻'))?.replace(/[^一-\u9fa5🌿]/g, '') || '雙藻🌿';
-  const notes = lines.slice(2).join(' ');
+    // 👤 抓 IG（符合帳號格式）
+    if (/^[a-zA-Z0-9._]{4,}$/.test(line) && !order.ig) order.ig = line;
+  });
 
-  return {
-    ig,
-    name,
-    phone,
-    email,
-    address,
-    inquiryDate,
-    previewText,
-    product,
-    quantity,
-    orderDate: today,
-    notes
-  };
+  return order;
 }
+
+module.exports = parseOrder;
