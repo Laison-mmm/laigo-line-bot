@@ -8,7 +8,7 @@ export async function verifyCustomer(order) {
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
   const json = await res.text();
-  const rows = JSON.parse(json);
+  const rows = await res.json(); // ✅ 直接解析 JSON 資料
 
   const clean = str => String(str || '').replace(/\s/g, '').trim();
   const normalizePhone = phone => clean(phone).replace(/^(\+?886|886)/, '0'); // +886917 ➜ 0917
