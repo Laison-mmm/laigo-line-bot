@@ -42,7 +42,6 @@ export default function parseOrder(text) {
       !/^[a-zA-Z0-9._]{4,}$/.test(l)
     ).join('\n');
 
-    // 電話強制 10 碼驗證
     if (!report.phone || report.phone.length !== 10) {
       throw new Error('📛 電話格式錯誤：' + report.phone);
     }
