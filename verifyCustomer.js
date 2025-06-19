@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { normalizePhone } from './utils.js';
 
 const SHEET_URL = process.env.SHEET_API_URL;
 const CSV_URL = process.env.SHEET_API_URL_CSV;
@@ -14,7 +15,7 @@ export default async function verifyCustomer(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(r => r.split(','));
 
-  const clean = str => String(str || '').replace(/\s/g, '');
+  const clean = str => normalizePhone(String(str || '').replace(/\s/g, ''));
 
   const rowIndex = rows.findIndex(r =>
     clean(r[3]) === clean(order.ig) &&
