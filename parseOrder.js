@@ -62,13 +62,12 @@ export default function parseOrder(text) {
     }
   }
 
-  // ✅ 備註排除所有表頭與欄位與價格
+  // ✅ 備註修正：保留所有非明確標籤欄位，並允許 IG 行保留
   report.notes = lines
     .filter(l =>
       !/^報單/.test(l) &&
-      !/^2\d{5}/.test(l) && // 詢問日
-      !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l) &&
-      !/^[a-zA-Z0-9._]{4,}$/.test(l) // IG 行
+      !/^2\d{5}/.test(l) && // 詢問日行
+      !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l)
     )
     .join('\n');
 
