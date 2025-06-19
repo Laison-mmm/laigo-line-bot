@@ -39,7 +39,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
   try {
     for (const event of events) {
-      const text = event.message?.text?.trim();
+      // ✅ 防止非 message 類型或非文字訊息觸發
+      if (event.type !== 'message' || event.message.type !== 'text') continue;
+
+      const text = event.message.text.trim();
       const userId = event.source?.userId;
       const replyToken = event.replyToken;
 
