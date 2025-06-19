@@ -1,6 +1,6 @@
 
 export default function parseOrder(text) {
-  const lines = text.trim().split('
+  const lines = text.trim().split('\n');
 ').map(l => l.trim()).filter(l => l);
   const report = {
     inquiryDate: '',
