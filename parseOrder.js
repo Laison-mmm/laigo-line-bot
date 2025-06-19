@@ -1,76 +1,51 @@
-const CHINESE_NUM_MAP = {
-  '一': 1, '二': 2, '兩': 2, '三': 3,
-  '四': 4, '五': 5, '六': 6, '七': 7,
-  '八': 8, '九': 9, '十': 10
-};
 
 export default function parseOrder(text) {
-  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-  const today = new Date();
-  const orderDate = `${today.getMonth() + 1}/${today.getDate()}`;
-  const todayCode = `${String(today.getFullYear()).slice(2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-
-  let report = {
-    ig: '', name: '', phone: '', email: '', address: '',
-    inquiryDate: '', previewText: '', quantity: 1,
-    orderDate, notes: ''
+  const lines = text.trim().split('
+').map(l => l.trim()).filter(l => l);
+  const report = {
+    inquiryDate: '',
+    ig: '',
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    quantity: 1,
+    orderDate: '',
+    notes: ''
   };
 
-  for (let line of lines) {
-    if (/^2\d{5}(?![\d\/])/.test(line) && !report.inquiryDate) {
-      const match = line.match(/^(\d{6})\s*(.*)/);
+  report.inquiryDate = (lines.find(l => /^\d{6}/.test(l)) || '').slice(0, 6);
+  report.ig = (lines.find(l => /^[a-zA-Z0-9_\.]+$/.test(l)) || '').trim();
+
+  lines.forEach(line => {
+    if (/姓名/.test(line)) report.name = line.replace(/.*姓名[:：]?\s*/, '').trim();
+    if (/電話/.test(line)) {
+      let tel = line.replace(/.*電話[:：]?\s*/, '').replace(/-/g, '').trim();
+      report.phone = tel.length === 9 ? '0' + tel : tel;
+    }
+    if (/信箱/.test(line)) report.email = line.replace(/.*信箱[:：]?\s*/, '').trim();
+    if (/門市|地址/.test(line)) report.address = line.replace(/.*[:：]?\s*/, '').trim();
+    if (/盒數/.test(line)) {
+      const match = line.match(/[一二兩三四五六七八九十\d]+/);
       if (match) {
-        report.inquiryDate = match[1];
-        report.previewText = match[2]?.trim() || '';
+        const map = { 一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+        const raw = match[0];
+        report.quantity = /^\d+$/.test(raw) ? parseInt(raw) : (map[raw] || 1);
       }
     }
-
-    if (/姓名[:：]/.test(line)) {
-      report.name = line.split(/[:：]/)[1]?.trim() || '';
-    }
-
-    if (/電話[:：]/.test(line)) {
-      let phone = line.split(/[:：]/)[1]?.replace(/[-\s]/g, '').trim() || '';
-      if (/^\d{9}$/.test(phone)) phone = '0' + phone;
-      if (!/^\d{10}$/.test(phone)) phone = '';
-      report.phone = phone;
-    }
-
-    if (/信箱[:：]/.test(line)) {
-      report.email = line.split(/[:：]/)[1]?.trim() || '';
-    }
-
-    if (/^(門市|地址)[:：]/.test(line)) {
-      report.address = line.split(/[:：]/)[1]?.trim() || '';
-    }
-
-    if (/^[a-zA-Z0-9._]{4,}$/.test(line) && !report.ig) {
-      report.ig = line;
-    }
-
-    if (line.includes('盒')) {
-      const numMatch = line.match(/(\d+)\s*盒/);
-      if (numMatch) {
-        report.quantity = parseInt(numMatch[1]);
-      } else {
-        const chineseText = line.replace(/[^一二三四五六七八九十兩]/g, '');
-        for (let ch of chineseText) {
-          if (CHINESE_NUM_MAP[ch]) {
-            report.quantity = CHINESE_NUM_MAP[ch];
-            break;
-          }
-        }
-      }
-    }
-  }
+  });
 
   report.notes = lines
     .filter(l =>
       !/^報單/.test(l) &&
       !/^2\d{5}/.test(l) &&
-      !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l)
+      !/姓名|電話|信箱|門市|地址|價格|盒數/.test(l) &&
+      l !== report.ig
     )
     .join('\n');
+
+  const today = new Date();
+  report.orderDate = `${today.getMonth() + 1}/${today.getDate()}`;
 
   return report;
 }
