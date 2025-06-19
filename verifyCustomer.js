@@ -7,19 +7,20 @@ export default async function verifyCustomer(order) {
     throw new Error('❌ verifyCustomer：缺少必要欄位');
   }
 
-  // 取得六碼日期字串
   const todayCode = getTodayCode();
 
-  // 讀取 Google Sheet CSV
   const res = await fetch(process.env.SHEET_API_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet 資料');
 
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(row => row.split(','));
 
-  // 三鍵比對
+  const clean = (str) => str?.trim();
+
   const rowIndex = rows.findIndex(r =>
-    r[3] === ig && r[4] === name && r[5] === phone
+    clean(r[3]) === clean(ig) &&
+    clean(r[4]) === clean(name) &&
+    clean(r[5]) === clean(phone)
   );
 
   if (rowIndex !== -1) {
@@ -29,12 +30,8 @@ export default async function verifyCustomer(order) {
     };
   }
 
-  // 非回購 ➜ 判斷是否為今天詢問
   const level = inquiryDate === todayCode ? '新客' : '追蹤';
-
-  return {
-    level
-  };
+  return { level };
 }
 
 function getTodayCode() {
@@ -42,5 +39,5 @@ function getTodayCode() {
   const yy = String(now.getFullYear()).slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
-  return `${yy}${mm}${dd}`; // 例如 250619
+  return `${yy}${mm}${dd}`;
 }
