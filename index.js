@@ -90,16 +90,37 @@ app.post('/webhook', middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
-          await safePush(userId, {
+
+          const successMsg = {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
-          });
+          };
+
+          // 回給個人
+          await safePush(userId, successMsg);
+
+          // 如果是在群組，群組也發送通知
+          if (event.source.type === 'group') {
+            const groupId = event.source.groupId;
+            await safePush(groupId, successMsg);
+          }
+
         } catch (err) {
           console.error('❌ 寫入錯誤:', err.message);
-          await safePush(userId, {
+
+          const failMsg = {
             type: 'text',
-            text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
-          });
+            text: `❌ 報單失敗：${finalOrder.name} 請稍後再試或聯絡客服`,
+          };
+
+          // 回給個人
+          await safePush(userId, failMsg);
+
+          // 群組也通知失敗
+          if (event.source.type === 'group') {
+            const groupId = event.source.groupId;
+            await safePush(groupId, failMsg);
+          }
         } finally {
           pendingOrders.delete(userId); // 無論成功或失敗都清掉
         }
