@@ -29,12 +29,12 @@ async function safeReply(token, message) {
 // ✅ 安全 push（封裝失敗防爆）
 // 現在接受 sourceId，可以是 userId, groupId, 或 roomId
 async function safePush(sourceId, message) {
-  console.log(`嘗試推播訊息到: ${sourceId}, 訊息內容: ${JSON.stringify(message)}`); // 新增日誌
+  console.log(`嘗試推播訊息到: ${sourceId}, 訊息內容: ${JSON.stringify(message)}`);
   try {
     await client.pushMessage(sourceId, message);
-    console.log(`✅ 成功推播訊息到: ${sourceId}`); // 新增日誌
+    console.log(`✅ 成功推播訊息到: ${sourceId}`);
   } catch (err) {
-    console.error(`❌ 推播訊息失敗到: ${sourceId}, 錯誤:`, err.message); // 修改日誌
+    console.error(`❌ 推播訊息失敗到: ${sourceId}, 錯誤:`, err.message);
   }
 }
 
@@ -47,8 +47,17 @@ app.post("/webhook", middleware(config), async (req, res) => {
       if (event.type !== "message" || event.message.type !== "text") continue;
 
       const text = event.message.text.trim();
-      const sourceId = event.source?.userId || event.source?.groupId || event.source?.roomId; // 取得訊息來源 ID
       const replyToken = event.replyToken;
+
+      // 修正 sourceId 取得邏輯：根據來源類型取得正確的 ID
+      let sourceId;
+      if (event.source.type === 'group') {
+        sourceId = event.source.groupId;
+      } else if (event.source.type === 'room') {
+        sourceId = event.source.roomId;
+      } else { // user
+        sourceId = event.source.userId;
+      }
 
       if (!text || !sourceId || !replyToken) continue;
 
@@ -76,7 +85,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
-        // 使用 sourceId 作為 key 儲存待確認訂單
+        // 使用正確的 sourceId 作為 key 儲存待確認訂單
         pendingOrders.set(sourceId, finalOrder);
 
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
@@ -86,7 +95,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
       // 🟢 確認送出
       if (text === "確定") {
-        // 從 sourceId 取得待確認訂單
+        // 從正確的 sourceId 取得待確認訂單
         const finalOrder = pendingOrders.get(sourceId);
         if (!finalOrder || finalOrder.submitted) {
           console.warn("⚠️ 已送出或資料不存在，跳過");
@@ -96,15 +105,15 @@ app.post("/webhook", middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
-          console.log(`準備推播報單成功訊息給 ${sourceId}`); // 新增日誌
-          // 推播訊息到原來的 sourceId (個人或群組)
+          console.log(`準備推播報單成功訊息給 ${sourceId}`);
+          // 推播訊息到正確的 sourceId (個人或群組)
           await safePush(sourceId, {
             type: "text",
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           });
         } catch (err) {
           console.error("❌ 寫入錯誤:", err.message);
-          console.log(`準備推播報單失敗訊息給 ${sourceId}`); // 新增日誌
+          console.log(`準備推播報單失敗訊息給 ${sourceId}`);
           await safePush(sourceId, {
             type: "text",
             text: "❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服",
