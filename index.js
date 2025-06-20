@@ -4,7 +4,6 @@ const dotenv = require('dotenv');
 const { parseOrder } = require('./parser');
 const { verifyCustomer } = require('./verifyCustomer');
 const { writeToSheet } = require('./sheetWriter');
-const fetch = require('node-fetch'); // ✅ 加這行才能發 webhook
 
 dotenv.config();
 
@@ -40,6 +39,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
   try {
     for (const event of events) {
+      // ✅ 防止非 message 類型或非文字訊息觸發
       if (event.type !== 'message' || event.message.type !== 'text') continue;
 
       const text = event.message.text.trim();
@@ -90,18 +90,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
-
-          // ✅ 單純觸發 webhook 通知（不動資料）
-          await fetch(process.env.NOTIFY_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              result: 'success',
-              name: finalOrder.name,
-              groupId: event.source?.groupId
-            })
-          });
-
           await safePush(userId, {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
@@ -130,10 +118,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
       }
     }
 
-    res.sendStatus(200);
+    res.sendStatus(200); // ✅ 保證 webhook 回 200，避免 LINE 重送
   } catch (err) {
     console.error('❌ webhook 全域錯誤:', err);
-    res.sendStatus(200);
+    res.sendStatus(200); // ❗照樣回 200，讓 LINE 不重送
   }
 });
 
