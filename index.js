@@ -58,6 +58,15 @@ app.post('/webhook', middleware(config), async (req, res) => {
           continue;
         }
 
+        // ✅ 電話長度檢查
+        if (order.phone.length !== 10) {
+          await safeReply(replyToken, {
+            type: 'text',
+            text: `❌ 電話號碼長度錯誤：${order.phone}`,
+          });
+          continue;
+        }
+
         const missing = [];
         if (!order.ig) missing.push('IG');
         if (!order.name) missing.push('姓名');
