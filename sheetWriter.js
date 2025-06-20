@@ -1,4 +1,4 @@
-// sheetWriter.js – 修：行號正確 + 盒數留數字 + 手機不足 10 碼拋錯
+// sheetWriter.js – 回購不跳行 + 盒數支援中文數字 + 手機不足 10 碼拋錯
 import fetch from 'node-fetch';
 
 const SHEET_CSV_URL   = process.env.SHEET_API_URL_CSV;
@@ -11,97 +11,84 @@ const MAX_GROUPS      = 6;
 const tzNow = () =>
   new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
 
-const cleanAll = s =>
-  String(s || '')
-    .replace(/[\s\u3000]/g, '')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .normalize('NFKC');
+const cleanAll = s => String(s || '').replace(/[\s\u3000]/g,'').replace(/[\u200B-\u200D\uFEFF]/g,'').normalize('NFKC');
 
 const normPhone = s => {
-  const d = String(s).replace(/\D/g, '');
+  const d = String(s).replace(/\D/g,'');
   let p = d.startsWith('886') ? d.slice(3) : d;
-  return p.length === 9 ? '0' + p : p;            // 918… → 0918…
+  return p.length === 9 ? '0'+p : p;
 };
 
+/* 中文數字 ➜ 整數 */
+const chineseMap = { 一:1, 二:2, 兩:2, 三:3, 四:4, 五:5, 六:6, 七:7, 八:8, 九:9, 十:10 };
+function parseQuantity(txt){
+  const digit = String(txt).match(/\d+/)?.[0];
+  if (digit) return parseInt(digit,10);
+
+  const zh = String(txt).match(/[一二兩三四五六七八九十]+/)?.[0];
+  if (!zh) return 0;
+  if (zh === '十') return 10;
+  if (zh.length === 2 && zh[1]==='十') return chineseMap[zh[0]]*10;           // 二十
+  if (zh.length === 2 && zh[0]==='十') return 10 + chineseMap[zh[1]];         // 十二
+  if (zh.length === 3 && zh[1]==='十') return chineseMap[zh[0]]*10 + chineseMap[zh[2]]; // 二十三
+  return chineseMap[zh] || 0;
+}
+
 /* ───── 主程式 ───── */
-export async function writeToSheet(order) {
-  /* 0. 手機 10 碼驗證 ─── */
+export async function writeToSheet(order){
   const phone10 = normPhone(order.phone);
-  if (phone10.length !== 10) {
-    // 👉 改為丟例外，讓 index.js catch 後回報「報單未完成」
-    throw new Error('手機號碼不足 10 碼');
-  }
+  if (phone10.length!==10) throw new Error('手機號碼不足 10 碼');
 
-  /* 1. 行號決定 ─── 先信 order.rowIndex */
-  let rowIndex = typeof order.rowIndex === 'number' && order.rowIndex > 0
-    ? order.rowIndex - 1   // 轉 0-based
-    : -1;
+  let rowIndex = typeof order.rowIndex==='number'&&order.rowIndex>0 ? order.rowIndex-1 : -1;
+  const csv  = await fetch(`${SHEET_CSV_URL}&_=${Date.now()}`).then(r=>r.text());
+  const rows = csv.trim().split('\n').map(r=>r.split(','));
 
-  const csv  = await fetch(`${SHEET_CSV_URL}&_=${Date.now()}`).then(r => r.text());
-  const rows = csv.trim().split('\n').map(r => r.split(','));
-
-  if (rowIndex === -1) {
+  if(rowIndex===-1){
     rowIndex = rows.findIndex(r =>
-      cleanAll(r[3]) === cleanAll(order.ig) &&
-      cleanAll(r[4]) === cleanAll(order.name) &&
-      normPhone(r[5]) === phone10
+      cleanAll(r[3])===cleanAll(order.ig) &&
+      cleanAll(r[4])===cleanAll(order.name) &&
+      normPhone(r[5])===phone10
     );
   }
-  const isRepurchase = rowIndex !== -1;
+  const isRepurchase = rowIndex!==-1;
 
-  /* 2. 今日日期 & 等級 */
-  const now        = tzNow();
-  const todayMD    = `${now.getMonth() + 1}/${now.getDate()}`;
-  const todayMMDD  = (`0${now.getMonth()+1}`).slice(-2) + (`0${now.getDate()}`).slice(-2);
+  const now = tzNow();
+  const todayMD = `${now.getMonth()+1}/${now.getDate()}`;
+  const todayMMDD = (`0${now.getMonth()+1}`).slice(-2)+(`0${now.getDate()}`).slice(-2);
   const inquiryMMDD = order.inquiryDate.slice(2);
+  const level = isRepurchase ? '已回購' : (inquiryMMDD===todayMMDD?'新客':'追蹤');
 
-  const level =
-    isRepurchase               ? '已回購'
-    : inquiryMMDD === todayMMDD? '新客'
-    : '追蹤';
+  const qty = parseQuantity(order.quantity);
 
-  /* 3. 抽出純數字盒數 */
-  const qty = parseInt(String(order.quantity).match(/\d+/)?.[0] || '0', 10);
-
-  /* 4. 共用 payload（電話 / 盒數 / 訂購日加 ' 保文字） */
   const base = {
-    channel     : CHANNEL,
-    ig          : order.ig,
-    name        : order.name,
-    phone       : `'${phone10}`,
-    inquiryDate : order.inquiryDate,
-    orderDate   : `'${todayMD}`,
-    quantity    : `'${qty}`,
-    product     : PRODUCT_NAME,
-    notes       : order.notes,
+    channel: CHANNEL,
+    ig: order.ig,
+    name: order.name,
+    phone: `'${phone10}`,
+    inquiryDate: order.inquiryDate,
+    orderDate: `'${todayMD}`,
+    quantity: `'${qty}`,
+    product: PRODUCT_NAME,
+    notes: order.notes,
     level
   };
 
-  /* 5. 新客 / 追蹤 ─── appendNew */
-  if (!isRepurchase) {
-    await fetch(SHEET_WRITE_URL, {
-      method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify({ mode: 'appendNew', data: base })
-    });
+  if(!isRepurchase){
+    await fetch(SHEET_WRITE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'appendNew',data:base})});
     return;
   }
 
-  /* 6. 已回購 ─── 找右側空欄 */
   const row = rows[rowIndex];
-  let ok = false;
-  for (let g = 0; g < MAX_GROUPS; g++) {
-    const baseCol = 10 + g * 3;          // K=10, N=13…
-    if (!row[baseCol] && !row[baseCol+1] && !row[baseCol+2]) { ok = true; break; }
+  let space=false;
+  for(let g=0;g<MAX_GROUPS;g++){
+    const c=10+g*3;
+    if(!row[c]&&!row[c+1]&&!row[c+2]){space=true;break;}
   }
-  if (!ok) throw new Error('回購欄位已滿');
+  if(!space) throw new Error('回購欄位已滿');
 
-  await fetch(SHEET_WRITE_URL, {
-    method : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body   : JSON.stringify({
-      mode: 'appendRight',
-      data: { ...base, row: rowIndex + 1 }    // 1-based 行號
-    })
+  await fetch(SHEET_WRITE_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode:'appendRight',data:{...base,row:rowIndex+1}})
   });
 }
