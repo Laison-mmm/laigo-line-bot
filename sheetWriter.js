@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { finalGuard } from './orderGuard'; // ✅ 加入檢查模組
 
 const SHEET_CSV_URL = process.env.SHEET_API_URL_CSV;
 const SHEET_WRITE_URL = process.env.SHEET_API_URL;
@@ -8,6 +9,8 @@ const CHANNEL = 'IG';
 const MAX_GROUPS = 6; // 最多支援 6 次回購（3欄 × 6組）
 
 export async function writeToSheet(order) {
+  finalGuard(order); // ✅ 新增：在寫入前做三項欄位檢查
+
   const res = await fetch(SHEET_CSV_URL);
   if (!res.ok) throw new Error('❌ 無法讀取 Google Sheet');
 
