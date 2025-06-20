@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const { parseOrder } = require('./parser');
 const { verifyCustomer } = require('./verifyCustomer');
 const { writeToSheet } = require('./sheetWriter');
+const fetch = require('node-fetch'); // ✅ 加這行才能發 webhook
 
 dotenv.config();
 
@@ -26,22 +27,11 @@ async function safeReply(token, message) {
 }
 
 // ✅ 安全 push（封裝失敗防爆）
-async function safePush(target, message) {
+async function safePush(userId, message) {
   try {
-    await client.pushMessage(target, message);
+    await client.pushMessage(userId, message);
   } catch (err) {
     console.warn('⚠️ pushMessage 失敗:', err.message);
-  }
-}
-
-// ✅ 分離群組通知（不動主邏輯）
-async function notifyGroup(event, message) {
-  if (event.source?.type === 'group') {
-    try {
-      await client.pushMessage(event.source.groupId, message);
-    } catch (err) {
-      console.warn('⚠️ 群組通知失敗:', err.message);
-    }
   }
 }
 
@@ -101,25 +91,29 @@ app.post('/webhook', middleware(config), async (req, res) => {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
 
-          const successMsg = {
+          // ✅ 單純觸發 webhook 通知（不動資料）
+          await fetch(process.env.NOTIFY_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              result: 'success',
+              name: finalOrder.name,
+              groupId: event.source?.groupId
+            })
+          });
+
+          await safePush(userId, {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
-          };
-          await safePush(userId, successMsg);
-          await notifyGroup(event, successMsg); // ✅ 群組通知（成功）
-
+          });
         } catch (err) {
           console.error('❌ 寫入錯誤:', err.message);
-
-          const errorMsg = {
+          await safePush(userId, {
             type: 'text',
             text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
-          };
-          await safePush(userId, errorMsg);
-          await notifyGroup(event, errorMsg); // ✅ 群組通知（失敗）
-
+          });
         } finally {
-          pendingOrders.delete(userId);
+          pendingOrders.delete(userId); // 無論成功或失敗都清掉
         }
 
         continue;
