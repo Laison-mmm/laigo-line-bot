@@ -21,16 +21,16 @@ async function safeReply(token, message) {
   try {
     await client.replyMessage(token, message);
   } catch (err) {
-    console.warn('⚠️ reply 失敗:', err.message);
+    console.warn('⚠️ reply 失敗（可能已用過）:', err.message);
   }
 }
 
 // ✅ 安全 push（封裝失敗防爆）
-async function safePush(targetId, message) {
+async function safePush(userId, message) {
   try {
-    await client.pushMessage(targetId, message);
+    await client.pushMessage(userId, message);
   } catch (err) {
-    console.warn('⚠️ push 失敗:', err.message);
+    console.warn('⚠️ pushMessage 失敗:', err.message);
   }
 }
 
@@ -39,14 +39,16 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
   try {
     for (const event of events) {
+      // ✅ 防止非 message 類型或非文字訊息觸發
       if (event.type !== 'message' || event.message.type !== 'text') continue;
 
       const text = event.message.text.trim();
       const userId = event.source?.userId;
       const replyToken = event.replyToken;
+
       if (!text || !userId || !replyToken) continue;
 
-      // 🟡 報單觸發
+      // 🟡 處理報單
       if (text.startsWith('報單')) {
         let order;
         try {
@@ -70,60 +72,76 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
-
         pendingOrders.set(userId, finalOrder);
+
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
         await safeReply(replyToken, { type: 'text', text: preview });
         continue;
       }
 
-      // 🟢 確認送出
-      if (text === '確定') {
-        const finalOrder = pendingOrders.get(userId);
-        if (!finalOrder || finalOrder.submitted) continue;
+ // 🟢 確認送出
+if (text === '確定') {
+  const finalOrder = pendingOrders.get(userId);
+  if (!finalOrder || finalOrder.submitted) {
+    console.warn('⚠️ 已送出或資料不存在，跳過');
+    continue;
+  }
 
-        try {
-          finalOrder.submitted = true;
-          await writeToSheet(finalOrder);
+  try {
+    finalOrder.submitted = true;
+    await writeToSheet(finalOrder);
 
-          const msg = {
-            type: 'text',
-            text: `✅ 報單成功：${finalOrder.name} 已完成`,
-          };
-          await safePush(userId, msg);
-          if (event.source.type === 'group') {
-            await safePush(event.source.groupId, msg);
-          }
+    const successMsg = {
+      type: 'text',
+      text: `✅ 報單成功：${finalOrder.name} 已完成`,
+    };
 
-        } catch (err) {
-          console.error('❌ 寫入錯誤:', err.message);
+    // ✅ 本人通知
+    await safePush(userId, successMsg);
 
-          const msg = {
-            type: 'text',
-            text: `❌ 報單失敗：${finalOrder.name} 請稍後再試或聯絡客服`,
-          };
-          await safePush(userId, msg);
-          if (event.source.type === 'group') {
-            await safePush(event.source.groupId, msg);
-          }
-        } finally {
-          pendingOrders.delete(userId);
-        }
-        continue;
-      }
+    // ✅ 群組也通知
+    if (event.source.type === 'group') {
+      await safePush(event.source.groupId, successMsg);
+    }
+
+  } catch (err) {
+    console.error('❌ 寫入錯誤:', err.message);
+
+    const failMsg = {
+      type: 'text',
+      text: `❌ 報單失敗：${finalOrder.name} 請稍後再試或聯絡客服`,
+    };
+
+    // ❌ 本人通知
+    await safePush(userId, failMsg);
+
+    // ❌ 群組也通知
+    if (event.source.type === 'group') {
+      await safePush(event.source.groupId, failMsg);
+    }
+
+  } finally {
+    pendingOrders.delete(userId); // 無論成功或失敗都清掉
+  }
+
+  continue;
+}
 
       // 🔴 取消報單
       if (text === '取消' && pendingOrders.has(userId)) {
         pendingOrders.delete(userId);
-        await safeReply(replyToken, { type: 'text', text: '❌ 已取消報單' });
+        await safeReply(replyToken, {
+          type: 'text',
+          text: '❌ 已取消報單',
+        });
         continue;
       }
     }
 
-    res.sendStatus(200); // ✅ 回傳 200，避免重送
+    res.sendStatus(200); // ✅ 保證 webhook 回 200，避免 LINE 重送
   } catch (err) {
-    console.error('❌ webhook 錯誤:', err);
-    res.sendStatus(200);
+    console.error('❌ webhook 全域錯誤:', err);
+    res.sendStatus(200); // ❗照樣回 200，讓 LINE 不重送
   }
 });
 
