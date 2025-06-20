@@ -34,6 +34,17 @@ async function safePush(target, message) {
   }
 }
 
+// ✅ 分離群組通知（不動主邏輯）
+async function notifyGroup(event, message) {
+  if (event.source?.type === 'group') {
+    try {
+      await client.pushMessage(event.source.groupId, message);
+    } catch (err) {
+      console.warn('⚠️ 群組通知失敗:', err.message);
+    }
+  }
+}
+
 app.post('/webhook', middleware(config), async (req, res) => {
   const events = req.body.events;
 
@@ -42,10 +53,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
       if (event.type !== 'message' || event.message.type !== 'text') continue;
 
       const text = event.message.text.trim();
+      const userId = event.source?.userId;
       const replyToken = event.replyToken;
-      const sourceKey = JSON.stringify(event.source); // ✅ 唯一且穩定的 key
 
-      if (!text || !replyToken) continue;
+      if (!text || !userId || !replyToken) continue;
 
       // 🟡 處理報單
       if (text.startsWith('報單')) {
@@ -71,7 +82,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
-        pendingOrders.set(sourceKey, finalOrder); // ✅ 全程用 sourceKey 當作識別 key
+        pendingOrders.set(userId, finalOrder);
 
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
         await safeReply(replyToken, { type: 'text', text: preview });
@@ -80,7 +91,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
       // 🟢 確認送出
       if (text === '確定') {
-        const finalOrder = pendingOrders.get(sourceKey); // ✅ 同樣只用 sourceKey 取出
+        const finalOrder = pendingOrders.get(userId);
         if (!finalOrder || finalOrder.submitted) {
           console.warn('⚠️ 已送出或資料不存在，跳過');
           continue;
@@ -94,12 +105,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           };
-
-          if (event.source?.type === 'user') {
-            await safePush(event.source.userId, successMsg);
-          } else if (event.source?.type === 'group') {
-            await safePush(event.source.groupId, successMsg);
-          }
+          await safePush(userId, successMsg);
+          await notifyGroup(event, successMsg); // ✅ 群組通知（成功）
 
         } catch (err) {
           console.error('❌ 寫入錯誤:', err.message);
@@ -108,23 +115,19 @@ app.post('/webhook', middleware(config), async (req, res) => {
             type: 'text',
             text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
           };
-
-          if (event.source?.type === 'user') {
-            await safePush(event.source.userId, errorMsg);
-          } else if (event.source?.type === 'group') {
-            await safePush(event.source.groupId, errorMsg);
-          }
+          await safePush(userId, errorMsg);
+          await notifyGroup(event, errorMsg); // ✅ 群組通知（失敗）
 
         } finally {
-          pendingOrders.delete(sourceKey); // ✅ 清除也用 sourceKey
+          pendingOrders.delete(userId);
         }
 
         continue;
       }
 
       // 🔴 取消報單
-      if (text === '取消' && pendingOrders.has(sourceKey)) {
-        pendingOrders.delete(sourceKey);
+      if (text === '取消' && pendingOrders.has(userId)) {
+        pendingOrders.delete(userId);
         await safeReply(replyToken, {
           type: 'text',
           text: '❌ 已取消報單',
@@ -133,10 +136,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
       }
     }
 
-    res.sendStatus(200); // ✅ 保證 webhook 回 200，避免 LINE 重送
+    res.sendStatus(200);
   } catch (err) {
     console.error('❌ webhook 全域錯誤:', err);
-    res.sendStatus(200); // ❗照樣回 200，讓 LINE 不重送
+    res.sendStatus(200);
   }
 });
 
