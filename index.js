@@ -29,10 +29,12 @@ async function safeReply(token, message) {
 // ✅ 安全 push（封裝失敗防爆）
 // 現在接受 sourceId，可以是 userId, groupId, 或 roomId
 async function safePush(sourceId, message) {
+  console.log(`嘗試推播訊息到: ${sourceId}, 訊息內容: ${JSON.stringify(message)}`); // 新增日誌
   try {
     await client.pushMessage(sourceId, message);
+    console.log(`✅ 成功推播訊息到: ${sourceId}`); // 新增日誌
   } catch (err) {
-    console.warn("⚠️ pushMessage 失敗:", err.message);
+    console.error(`❌ 推播訊息失敗到: ${sourceId}, 錯誤:`, err.message); // 修改日誌
   }
 }
 
@@ -94,6 +96,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
+          console.log(`準備推播報單成功訊息給 ${sourceId}`); // 新增日誌
           // 推播訊息到原來的 sourceId (個人或群組)
           await safePush(sourceId, {
             type: "text",
@@ -101,6 +104,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           });
         } catch (err) {
           console.error("❌ 寫入錯誤:", err.message);
+          console.log(`準備推播報單失敗訊息給 ${sourceId}`); // 新增日誌
           await safePush(sourceId, {
             type: "text",
             text: "❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服",
