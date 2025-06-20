@@ -14,6 +14,7 @@ const config = {
 
 const app = express();
 const client = new Client(config);
+// pendingOrders 現在使用 sourceId (userId, groupId, 或 roomId) 作為 key
 const pendingOrders = new Map();
 
 // ✅ 安全 reply（token 過期不會炸）
@@ -26,9 +27,10 @@ async function safeReply(token, message) {
 }
 
 // ✅ 安全 push（封裝失敗防爆）
-async function safePush(userId, message) {
+// 現在接受 sourceId，可以是 userId, groupId, 或 roomId
+async function safePush(sourceId, message) {
   try {
-    await client.pushMessage(userId, message);
+    await client.pushMessage(sourceId, message);
   } catch (err) {
     console.warn('⚠️ pushMessage 失敗:', err.message);
   }
@@ -43,10 +45,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
       if (event.type !== 'message' || event.message.type !== 'text') continue;
 
       const text = event.message.text.trim();
-      const userId = event.source?.userId;
+      const sourceId = event.source?.userId || event.source?.groupId || event.source?.roomId; // 取得訊息來源 ID
       const replyToken = event.replyToken;
 
-      if (!text || !userId || !replyToken) continue;
+      if (!text || !sourceId || !replyToken) continue;
 
       // 🟡 處理報單
       if (text.startsWith('報單')) {
@@ -72,7 +74,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
-        pendingOrders.set(userId, finalOrder);
+        // 使用 sourceId 作為 key 儲存待確認訂單
+        pendingOrders.set(sourceId, finalOrder);
 
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
         await safeReply(replyToken, { type: 'text', text: preview });
@@ -81,7 +84,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
       // 🟢 確認送出
       if (text === '確定') {
-        const finalOrder = pendingOrders.get(userId);
+        // 從 sourceId 取得待確認訂單
+        const finalOrder = pendingOrders.get(sourceId);
         if (!finalOrder || finalOrder.submitted) {
           console.warn('⚠️ 已送出或資料不存在，跳過');
           continue;
@@ -90,26 +94,27 @@ app.post('/webhook', middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
-          await safePush(userId, {
+          // 推播訊息到原來的 sourceId (個人或群組)
+          await safePush(sourceId, {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           });
         } catch (err) {
           console.error('❌ 寫入錯誤:', err.message);
-          await safePush(userId, {
+          await safePush(sourceId, {
             type: 'text',
             text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
           });
         } finally {
-          pendingOrders.delete(userId); // 無論成功或失敗都清掉
+          pendingOrders.delete(sourceId); // 無論成功或失敗都清掉
         }
 
         continue;
       }
 
       // 🔴 取消報單
-      if (text === '取消' && pendingOrders.has(userId)) {
-        pendingOrders.delete(userId);
+      if (text === '取消' && pendingOrders.has(sourceId)) {
+        pendingOrders.delete(sourceId);
         await safeReply(replyToken, {
           type: 'text',
           text: '❌ 已取消報單',
@@ -129,3 +134,5 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log('🚀 LAIGO Bot running on port', port);
 });
+
+
