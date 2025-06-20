@@ -90,7 +90,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           // Flex Message for preview
           const flexMessage = {
             "type": "flex",
-            "altText": "報單預覽：請在聊天室輸入『確定』或『取消』來完成操作。", // 更新 altText
+            "altText": "報單預覽：請在聊天室輸入『確定』或『取消』來完成操作。",
             "contents": {
               "type": "bubble",
               "body": {
@@ -136,94 +136,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
                         ]
                       },
                       {
-                        "type": "box",
-                        "layout": "baseline",
-                        "spacing": "sm",
-                        "contents": [
-                          {
-                            "type": "text",
-                            "text": "電話:",
-                            "color": "#aaaaaa",
-                            "size": "sm",
-                            "flex": 1
-                          },
-                          {
-                            "type": "text",
-                            "text": finalOrder.phone,
-                            "wrap": true,
-                            "color": "#666666",
-                            "size": "sm",
-                            "flex": 4
-                          }
-                        ]
-                      },
-                      {
-                        "type": "box",
-                        "layout": "baseline",
-                        "spacing": "sm",
-                        "contents": [
-                          {
-                            "type": "text",
-                            "text": "IG:",
-                            "color": "#aaaaaa",
-                            "size": "sm",
-                            "flex": 1
-                          },
-                          {
-                            "type": "text",
-                            "text": finalOrder.ig,
-                            "wrap": true,
-                            "color": "#666666",
-                            "size": "sm",
-                            "flex": 4
-                          }
-                        ]
-                      },
-                      {
-                        "type": "box",
-                        "layout": "baseline",
-                        "spacing": "sm",
-                        "contents": [
-                          {
-                            "type": "text",
-                            "text": "盒數:",
-                            "color": "#aaaaaa",
-                            "size": "sm",
-                            "flex": 1
-                          },
-                          {
-                            "type": "text",
-                            "text": finalOrder.quantity,
-                            "wrap": true,
-                            "color": "#666666",
-                            "size": "sm",
-                            "flex": 4
-                          }
-                        ]
-                      },
-                      {
-                        "type": "box",
-                        "layout": "baseline",
-                        "spacing": "sm",
-                        "contents": [
-                          {
-                            "type": "text",
-                            "text": "備註:",
-                            "color": "#aaaaaa",
-                            "size": "sm",
-                            "flex": 1
-                          },
-                          {
-                            "type": "text",
-                            "text": finalOrder.notes || "無",
-                            "wrap": true,
-                            "color": "#666666",
-                            "size": "sm",
-                            "flex": 4
-                          }
-                        ]
-                      },
-                      {
                         "type": "text",
                         "text": "這筆資料要送出嗎？",
                         "wrap": true,
@@ -238,7 +150,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
               "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "spacing": "md", // 增加按鈕間距
+                "spacing": "none", // 設置為 none，然後手動添加間距
                 "contents": [
                   {
                     "type": "button",
@@ -251,6 +163,11 @@ app.post("/webhook", middleware(config), async (req, res) => {
                       "displayText": "確定報單"
                     },
                     "color": "#1DB446"
+                  },
+                  {
+                    "type": "box", // 添加一個空的 box 作為間隔
+                    "layout": "vertical",
+                    "height": "10px" // 設定高度來控制間距
                   },
                   {
                     "type": "button",
@@ -284,14 +201,17 @@ app.post("/webhook", middleware(config), async (req, res) => {
             finalOrder.submitted = true;
             await writeToSheet(finalOrder);
             console.log(`準備推播報單成功訊息給 ${sourceId}`);
-            await safePush(sourceId, {
+            // 移除 safePush，改為直接透過 safeReply 發送成功訊息
+            await safeReply(replyToken, {
               type: "text",
               text: `✅ 報單成功：${finalOrder.name} 已完成`,
             });
+
           } catch (err) {
             console.error("❌ 寫入錯誤:", err.message);
             console.log(`準備推播報單失敗訊息給 ${sourceId}`);
-            await safePush(sourceId, {
+            // 失敗時仍然透過 safeReply 回覆錯誤訊息
+            await safeReply(replyToken, {
               type: "text",
               text: "❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服",
             });
