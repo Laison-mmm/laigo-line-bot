@@ -1,5 +1,3 @@
-// ✅ index.js – 原始結構保留 + 加入群組通知（不影響回購定位）
-
 const express = require('express');
 const { middleware, Client } = require('@line/bot-sdk');
 const dotenv = require('dotenv');
@@ -18,6 +16,7 @@ const app = express();
 const client = new Client(config);
 const pendingOrders = new Map();
 
+// ✅ 安全 reply（token 過期不會炸）
 async function safeReply(token, message) {
   try {
     await client.replyMessage(token, message);
@@ -26,6 +25,7 @@ async function safeReply(token, message) {
   }
 }
 
+// ✅ 安全 push（封裝失敗防爆）
 async function safePush(targetId, message) {
   try {
     await client.pushMessage(targetId, message);
@@ -68,10 +68,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
           continue;
         }
 
-        // ✅ 這邊只保留必要欄位
         const checkResult = await verifyCustomer(order);
-        order.rowIndex = checkResult.rowIndex;
-        const finalOrder = { ...order, submitted: false };
+        const finalOrder = { ...order, ...checkResult, submitted: false };
 
         pendingOrders.set(userId, finalOrder);
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
@@ -93,7 +91,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           };
           await safePush(userId, msg);
-
           if (event.source.type === 'group') {
             await safePush(event.source.groupId, msg);
           }
@@ -106,7 +103,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
             text: `❌ 報單失敗：${finalOrder.name} 請稍後再試或聯絡客服`,
           };
           await safePush(userId, msg);
-
           if (event.source.type === 'group') {
             await safePush(event.source.groupId, msg);
           }
@@ -123,7 +119,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
         continue;
       }
     }
-    res.sendStatus(200);
+
+    res.sendStatus(200); // ✅ 回傳 200，避免重送
   } catch (err) {
     console.error('❌ webhook 錯誤:', err);
     res.sendStatus(200);
