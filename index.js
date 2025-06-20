@@ -4,7 +4,6 @@ const dotenv = require('dotenv');
 const { parseOrder } = require('./parser');
 const { verifyCustomer } = require('./verifyCustomer');
 const { writeToSheet } = require('./sheetWriter');
-const { finalGuard } = require('./orderGuard');
 
 dotenv.config();
 
@@ -91,13 +90,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
-
-          try {
-            finalGuard(finalOrder); // ✅ 執行三項檢查（電話格式 / 長度 / 日期格式）
-          } catch (checkErr) {
-            console.warn('⚠️ 資料格式有誤:', checkErr.message);
-          }
-
           await safePush(userId, {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
