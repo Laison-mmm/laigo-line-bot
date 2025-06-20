@@ -4,7 +4,6 @@ const dotenv = require('dotenv');
 const { parseOrder } = require('./parser');
 const { verifyCustomer } = require('./verifyCustomer');
 const { writeToSheet } = require('./sheetWriter');
-const { finalGuard } = require('./orderGuard');
 
 dotenv.config();
 
@@ -83,6 +82,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
       // 🟢 確認送出
       if (text === '確定') {
         const finalOrder = pendingOrders.get(userId);
+finalGuard(finalOrder); // ✅ 呼叫三項格式檢查
         if (!finalOrder || finalOrder.submitted) {
           console.warn('⚠️ 已送出或資料不存在，跳過');
           continue;
@@ -91,7 +91,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
         try {
           finalOrder.submitted = true;
           await writeToSheet(finalOrder);
-          finalGuard(finalOrder); // ✅ 報單送出後主動檢查三項缺失
           await safePush(userId, {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
