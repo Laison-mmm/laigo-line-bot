@@ -43,10 +43,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
       if (event.type !== 'message' || event.message.type !== 'text') continue;
 
       const text = event.message.text.trim();
-      const userId = event.source?.userId;
       const replyToken = event.replyToken;
+      const sourceKey = JSON.stringify(event.source); // ✅ 更穩定的唯一來源識別
 
-      if (!text || !userId || !replyToken) continue;
+      if (!text || !replyToken || !sourceKey) continue;
 
       // 🟡 處理報單
       if (text.startsWith('報單')) {
@@ -72,7 +72,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
-        pendingOrders.set(userId, finalOrder);
+        pendingOrders.set(sourceKey, finalOrder); // ✅ 用 sourceKey 儲存
 
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
         await safeReply(replyToken, { type: 'text', text: preview });
@@ -81,7 +81,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
       // 🟢 確認送出
       if (text === '確定') {
-        const finalOrder = pendingOrders.get(userId);
+        const finalOrder = pendingOrders.get(sourceKey);
         if (!finalOrder || finalOrder.submitted) {
           console.warn('⚠️ 已送出或資料不存在，跳過');
           continue;
@@ -95,10 +95,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           };
-          await safePush(userId, successMsg);
-
-          // ✅ 若為群組，推播成功通知
-          if (event.source?.type === 'group') {
+          if (event.source?.type === 'user') {
+            await safePush(event.source.userId, successMsg);
+          } else if (event.source?.type === 'group') {
             await safePush(event.source.groupId, successMsg);
           }
 
@@ -109,23 +108,22 @@ app.post('/webhook', middleware(config), async (req, res) => {
             type: 'text',
             text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
           };
-          await safePush(userId, errorMsg);
-
-          // ✅ 若為群組，推播錯誤通知
-          if (event.source?.type === 'group') {
+          if (event.source?.type === 'user') {
+            await safePush(event.source.userId, errorMsg);
+          } else if (event.source?.type === 'group') {
             await safePush(event.source.groupId, errorMsg);
           }
 
         } finally {
-          pendingOrders.delete(userId); // 無論成功或失敗都清掉
+          pendingOrders.delete(sourceKey); // ✅ 用 sourceKey 清除
         }
 
         continue;
       }
 
       // 🔴 取消報單
-      if (text === '取消' && pendingOrders.has(userId)) {
-        pendingOrders.delete(userId);
+      if (text === '取消' && pendingOrders.has(sourceKey)) {
+        pendingOrders.delete(sourceKey);
         await safeReply(replyToken, {
           type: 'text',
           text: '❌ 已取消報單',
