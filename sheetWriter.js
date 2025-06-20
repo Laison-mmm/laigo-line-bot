@@ -14,7 +14,8 @@ export async function writeToSheet(order) {
   const csv = await res.text();
   const rows = csv.trim().split('\n').map(r => r.split(','));
   const clean = str => String(str || '').replace(/\s/g, '');
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+const today = `${now.getMonth() + 1}/${now.getDate()}`;
 
   const rowIndex = rows.findIndex(r =>
     clean(r[3]) === clean(order.ig) ||
