@@ -50,16 +50,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
       if (!text || !sourceId || !replyToken) continue;
 
-      // --- 臨時除錯程式碼 START ---
-      console.log("Received event:", event);
-      console.log("Source ID:", sourceId);
-      console.log("Source Type:", event.source?.type);
-      await safeReply(replyToken, {
-        type: "text",
-        text: `除錯資訊：\nSource ID: ${sourceId}\nSource Type: ${event.source?.type}`,
-      });
-      // --- 臨時除錯程式碼 END ---
-
       // 🟡 處理報單
       if (text.startsWith("報單")) {
         let order;
