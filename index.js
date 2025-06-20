@@ -79,53 +79,33 @@ app.post('/webhook', middleware(config), async (req, res) => {
         continue;
       }
 
- // 🟢 確認送出
-if (text === '確定') {
-  const finalOrder = pendingOrders.get(userId);
-  if (!finalOrder || finalOrder.submitted) {
-    console.warn('⚠️ 已送出或資料不存在，跳過');
-    continue;
-  }
+      // 🟢 確認送出
+      if (text === '確定') {
+        const finalOrder = pendingOrders.get(userId);
+        if (!finalOrder || finalOrder.submitted) {
+          console.warn('⚠️ 已送出或資料不存在，跳過');
+          continue;
+        }
 
-  try {
-    finalOrder.submitted = true;
-    await writeToSheet(finalOrder);
+        try {
+          finalOrder.submitted = true;
+          await writeToSheet(finalOrder);
+          await safePush(userId, {
+            type: 'text',
+            text: `✅ 報單成功：${finalOrder.name} 已完成`,
+          });
+        } catch (err) {
+          console.error('❌ 寫入錯誤:', err.message);
+          await safePush(userId, {
+            type: 'text',
+            text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
+          });
+        } finally {
+          pendingOrders.delete(userId); // 無論成功或失敗都清掉
+        }
 
-    const successMsg = {
-      type: 'text',
-      text: `✅ 報單成功：${finalOrder.name} 已完成`,
-    };
-
-    // ✅ 本人通知
-    await safePush(userId, successMsg);
-
-    // ✅ 群組也通知
-    if (event.source.type === 'group') {
-      await safePush(event.source.groupId, successMsg);
-    }
-
-  } catch (err) {
-    console.error('❌ 寫入錯誤:', err.message);
-
-    const failMsg = {
-      type: 'text',
-      text: `❌ 報單失敗：${finalOrder.name} 請稍後再試或聯絡客服`,
-    };
-
-    // ❌ 本人通知
-    await safePush(userId, failMsg);
-
-    // ❌ 群組也通知
-    if (event.source.type === 'group') {
-      await safePush(event.source.groupId, failMsg);
-    }
-
-  } finally {
-    pendingOrders.delete(userId); // 無論成功或失敗都清掉
-  }
-
-  continue;
-}
+        continue;
+      }
 
       // 🔴 取消報單
       if (text === '取消' && pendingOrders.has(userId)) {
