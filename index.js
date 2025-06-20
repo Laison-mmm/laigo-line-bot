@@ -1,4 +1,3 @@
-
 const express = require('express');
 const { middleware, Client } = require('@line/bot-sdk');
 const dotenv = require('dotenv');
@@ -71,23 +70,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
           continue;
         }
 
-        // ✅ 電話格式錯誤防呆
-        if (order.phone.length !== 10) {
-          await safeReply(replyToken, {
-            type: 'text',
-            text: `❌ 電話號碼長度錯誤：${order.phone}`,
-          });
-          continue;
-        }
-
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
         pendingOrders.set(userId, finalOrder);
 
-        const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}
-這筆資料要送出嗎？
-✅ 請輸入「確定」
-❌ 請輸入「取消」`;
+        const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
         await safeReply(replyToken, { type: 'text', text: preview });
         continue;
       }
