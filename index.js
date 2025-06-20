@@ -39,14 +39,13 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
   try {
     for (const event of events) {
-      // ✅ 防止非 message 類型或非文字訊息觸發
       if (event.type !== 'message' || event.message.type !== 'text') continue;
 
       const text = event.message.text.trim();
       const replyToken = event.replyToken;
-      const sourceKey = JSON.stringify(event.source); // ✅ 更穩定的唯一來源識別
+      const sourceKey = JSON.stringify(event.source); // ✅ 唯一且穩定的 key
 
-      if (!text || !replyToken || !sourceKey) continue;
+      if (!text || !replyToken) continue;
 
       // 🟡 處理報單
       if (text.startsWith('報單')) {
@@ -72,7 +71,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         const checkResult = await verifyCustomer(order);
         const finalOrder = { ...order, ...checkResult, submitted: false };
-        pendingOrders.set(sourceKey, finalOrder); // ✅ 用 sourceKey 儲存
+        pendingOrders.set(sourceKey, finalOrder); // ✅ 全程用 sourceKey 當作識別 key
 
         const preview = `👤 ${finalOrder.inquiryDate}｜${finalOrder.name}\n這筆資料要送出嗎？\n✅ 請輸入「確定」\n❌ 請輸入「取消」`;
         await safeReply(replyToken, { type: 'text', text: preview });
@@ -81,7 +80,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
       // 🟢 確認送出
       if (text === '確定') {
-        const finalOrder = pendingOrders.get(sourceKey);
+        const finalOrder = pendingOrders.get(sourceKey); // ✅ 同樣只用 sourceKey 取出
         if (!finalOrder || finalOrder.submitted) {
           console.warn('⚠️ 已送出或資料不存在，跳過');
           continue;
@@ -95,6 +94,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
             type: 'text',
             text: `✅ 報單成功：${finalOrder.name} 已完成`,
           };
+
           if (event.source?.type === 'user') {
             await safePush(event.source.userId, successMsg);
           } else if (event.source?.type === 'group') {
@@ -108,6 +108,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
             type: 'text',
             text: '❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服',
           };
+
           if (event.source?.type === 'user') {
             await safePush(event.source.userId, errorMsg);
           } else if (event.source?.type === 'group') {
@@ -115,7 +116,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
           }
 
         } finally {
-          pendingOrders.delete(sourceKey); // ✅ 用 sourceKey 清除
+          pendingOrders.delete(sourceKey); // ✅ 清除也用 sourceKey
         }
 
         continue;
