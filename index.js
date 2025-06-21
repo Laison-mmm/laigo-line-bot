@@ -67,7 +67,13 @@ app.post("/webhook", middleware(config), async (req, res) => {
             order = parseOrder(text);
           } catch (err) {
             await safeReply(replyToken, { type: "text", text: "❌ 無法解析報單內容，請檢查格式" });
-            return; // 修正：解析失敗後直接 return
+            return; // 解析失敗後直接 return
+          }
+
+          // 新增：電話號碼 10 碼驗證
+          if (order.phone && order.phone.length !== 10) {
+            await safeReply(replyToken, { type: "text", text: "❌ 電話號碼必須是 10 碼，請檢查" });
+            return; // 電話號碼不符直接 return
           }
 
           const missing = [];
@@ -79,7 +85,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
           if (missing.length > 0) {
             await safeReply(replyToken, { type: "text", text: `❌ 缺少欄位：${missing.join("、")}` });
-            return; // 修正：缺少欄位後直接 return
+            return; // 缺少欄位後直接 return
           }
 
           const checkResult = await verifyCustomer(order);
@@ -90,7 +96,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           // Flex Message for preview
           const flexMessage = {
             "type": "flex",
-            "altText": "報單預覽：請點擊『確定』或『取消』按鈕來完成操作。", // 更新 altText
+            "altText": "報單預覽：請點擊『確定』或『取消』按鈕來完成操作。",
             "contents": {
               "type": "bubble",
               "body": {
@@ -150,7 +156,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
               "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "spacing": "lg", // 增加按鈕間距，從 md 改為 lg
+                "spacing": "lg", // 增加按鈕間距
                 "contents": [
                   {
                     "type": "button",
@@ -181,11 +187,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
             }
           };
           await safeReply(replyToken, flexMessage);
-          return; // 修正：發送 Flex Message 後直接 return
+          return; // 發送 Flex Message 後直接 return
         }
-
-        // 🟢 確認送出 (文字版，已移除)
-        // 🔴 取消報單 (文字版，已移除)
       }
 
       // --- 處理 Postback 事件 ---
@@ -196,7 +199,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           const finalOrder = pendingOrders.get(sourceId);
           if (!finalOrder || finalOrder.submitted) {
             console.warn("⚠️ 已送出或資料不存在，跳過");
-            // 這裡不需要 reply，因為用戶已經點擊了按鈕，且可能沒有新的 replyToken
+            // 不再嘗試 reply，因為 replyToken 可能已失效，避免 400 錯誤
             return;
           }
 
@@ -204,8 +207,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
             finalOrder.submitted = true;
             await writeToSheet(finalOrder);
             console.log(`準備推播報單成功訊息給 ${sourceId}`);
-            // 透過 safeReply 發送成功訊息，取代 Flex Message
-            await safeReply(replyToken, {
+            // 改為使用 safePush 發送成功訊息，確保訊息能送達，但不會取代 Flex Message
+            await safePush(sourceId, {
               type: "text",
               text: `✅ 報單成功：${finalOrder.name} 已完成`,
             });
@@ -213,8 +216,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
           } catch (err) {
             console.error("❌ 寫入錯誤:", err.message);
             console.log(`準備推播報單失敗訊息給 ${sourceId}`);
-            // 失敗時仍然透過 safeReply 回覆錯誤訊息
-            await safeReply(replyToken, {
+            // 失敗時也透過 safePush 回覆錯誤訊息
+            await safePush(sourceId, {
               type: "text",
               text: "❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服",
             });
@@ -227,7 +230,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
         if (postbackData === "action=cancel_order") {
           if (pendingOrders.has(sourceId)) {
             pendingOrders.delete(sourceId);
-            await safeReply(replyToken, {
+            // 取消時也透過 safePush 回覆訊息
+            await safePush(sourceId, {
               type: "text",
               text: "❌ 已取消報單",
             });
