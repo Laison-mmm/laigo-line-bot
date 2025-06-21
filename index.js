@@ -67,7 +67,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
             order = parseOrder(text);
           } catch (err) {
             await safeReply(replyToken, { type: "text", text: "❌ 無法解析報單內容，請檢查格式" });
-            return; // 修正：解析失敗後直接 return
+            continue;
           }
 
           const missing = [];
@@ -79,7 +79,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
           if (missing.length > 0) {
             await safeReply(replyToken, { type: "text", text: `❌ 缺少欄位：${missing.join("、")}` });
-            return; // 修正：缺少欄位後直接 return
+            continue;
           }
 
           const checkResult = await verifyCustomer(order);
@@ -90,7 +90,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           // Flex Message for preview
           const flexMessage = {
             "type": "flex",
-            "altText": "報單預覽：請點擊『確定』或『取消』按鈕來完成操作。", // 更新 altText
+            "altText": "報單預覽：請在聊天室輸入『確定』或『取消』來完成操作。", // 更新 altText
             "contents": {
               "type": "bubble",
               "body": {
@@ -136,6 +136,94 @@ app.post("/webhook", middleware(config), async (req, res) => {
                         ]
                       },
                       {
+                        "type": "box",
+                        "layout": "baseline",
+                        "spacing": "sm",
+                        "contents": [
+                          {
+                            "type": "text",
+                            "text": "電話:",
+                            "color": "#aaaaaa",
+                            "size": "sm",
+                            "flex": 1
+                          },
+                          {
+                            "type": "text",
+                            "text": finalOrder.phone,
+                            "wrap": true,
+                            "color": "#666666",
+                            "size": "sm",
+                            "flex": 4
+                          }
+                        ]
+                      },
+                      {
+                        "type": "box",
+                        "layout": "baseline",
+                        "spacing": "sm",
+                        "contents": [
+                          {
+                            "type": "text",
+                            "text": "IG:",
+                            "color": "#aaaaaa",
+                            "size": "sm",
+                            "flex": 1
+                          },
+                          {
+                            "type": "text",
+                            "text": finalOrder.ig,
+                            "wrap": true,
+                            "color": "#666666",
+                            "size": "sm",
+                            "flex": 4
+                          }
+                        ]
+                      },
+                      {
+                        "type": "box",
+                        "layout": "baseline",
+                        "spacing": "sm",
+                        "contents": [
+                          {
+                            "type": "text",
+                            "text": "盒數:",
+                            "color": "#aaaaaa",
+                            "size": "sm",
+                            "flex": 1
+                          },
+                          {
+                            "type": "text",
+                            "text": finalOrder.quantity,
+                            "wrap": true,
+                            "color": "#666666",
+                            "size": "sm",
+                            "flex": 4
+                          }
+                        ]
+                      },
+                      {
+                        "type": "box",
+                        "layout": "baseline",
+                        "spacing": "sm",
+                        "contents": [
+                          {
+                            "type": "text",
+                            "text": "備註:",
+                            "color": "#aaaaaa",
+                            "size": "sm",
+                            "flex": 1
+                          },
+                          {
+                            "type": "text",
+                            "text": finalOrder.notes || "無",
+                            "wrap": true,
+                            "color": "#666666",
+                            "size": "sm",
+                            "flex": 4
+                          }
+                        ]
+                      },
+                      {
                         "type": "text",
                         "text": "這筆資料要送出嗎？",
                         "wrap": true,
@@ -150,7 +238,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
               "footer": {
                 "type": "box",
                 "layout": "vertical",
-                "spacing": "lg", // 增加按鈕間距，從 md 改為 lg
+                "spacing": "md", // 增加按鈕間距
                 "contents": [
                   {
                     "type": "button",
@@ -181,30 +269,66 @@ app.post("/webhook", middleware(config), async (req, res) => {
             }
           };
           await safeReply(replyToken, flexMessage);
-          return; // 修正：發送 Flex Message 後直接 return
+          continue;
         }
 
-        // 🟢 確認送出 (文字版，已移除)
-        // 🔴 取消報單 (文字版，已移除)
-      }
-
-      // --- 處理 Postback 事件 ---
-      if (event.type === "postback") {
-        const postbackData = event.postback.data; // 獲取按鈕中設定的 data
-
-        if (postbackData === "action=confirm_order") {
+        // 🟢 確認送出 (文字版，可選，建議移除以強制使用按鈕)
+        if (text === "確定") {
           const finalOrder = pendingOrders.get(sourceId);
           if (!finalOrder || finalOrder.submitted) {
             console.warn("⚠️ 已送出或資料不存在，跳過");
-            // 這裡不需要 reply，因為用戶已經點擊了按鈕，且可能沒有新的 replyToken
-            return;
+            continue;
           }
 
           try {
             finalOrder.submitted = true;
             await writeToSheet(finalOrder);
             console.log(`準備推播報單成功訊息給 ${sourceId}`);
-            // 透過 safeReply 發送成功訊息，取代 Flex Message
+            await safePush(sourceId, {
+              type: "text",
+              text: `✅ 報單成功：${finalOrder.name} 已完成`,
+            });
+          } catch (err) {
+            console.error("❌ 寫入錯誤:", err.message);
+            console.log(`準備推播報單失敗訊息給 ${sourceId}`);
+            await safePush(sourceId, {
+              type: "text",
+              text: "❌ 系統錯誤，報單未完成，請稍後再試或聯絡客服",
+            });
+          } finally {
+            pendingOrders.delete(sourceId);
+          }
+          continue;
+        }
+
+        // 🔴 取消報單 (文字版，可選，建議移除以強制使用按鈕)
+        if (text === "取消" && pendingOrders.has(sourceId)) {
+          pendingOrders.delete(sourceId);
+          await safeReply(replyToken, {
+            type: "text",
+            text: "❌ 已取消報單",
+          });
+          continue;
+        }
+      }
+
+      // --- 新增：處理 Postback 事件 ---
+      if (event.type === "postback") {
+        const postbackData = event.postback.data; // 獲取按鈕中設定的 data
+
+        if (postbackData === "action=confirm_order") {
+          // 處理「確定」邏輯，與原有的 "確定" 文字處理邏輯相同
+          const finalOrder = pendingOrders.get(sourceId);
+          if (!finalOrder || finalOrder.submitted) {
+            console.warn("⚠️ 已送出或資料不存在，跳過");
+            return; // 使用 return 而不是 continue，因為這裡已經處理完一個事件
+          }
+
+          try {
+            finalOrder.submitted = true;
+            await writeToSheet(finalOrder);
+            console.log(`準備推播報單成功訊息給 ${sourceId}`);
+            // 移除 safePush，改為直接透過 safeReply 發送成功訊息
             await safeReply(replyToken, {
               type: "text",
               text: `✅ 報單成功：${finalOrder.name} 已完成`,
@@ -221,10 +345,11 @@ app.post("/webhook", middleware(config), async (req, res) => {
           } finally {
             pendingOrders.delete(sourceId);
           }
-          return;
+          return; // 使用 return 而不是 continue
         }
 
         if (postbackData === "action=cancel_order") {
+          // 處理「取消」邏輯，與原有的 "取消" 文字處理邏輯相同
           if (pendingOrders.has(sourceId)) {
             pendingOrders.delete(sourceId);
             await safeReply(replyToken, {
@@ -232,7 +357,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
               text: "❌ 已取消報單",
             });
           }
-          return;
+          return; // 使用 return 而不是 continue
         }
       }
     }
