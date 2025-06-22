@@ -1,4 +1,4 @@
-// sheetWriter.js – 回購不跳行 + 盒數支援中文數字 + 手機不足 10 碼拋錯
+// sheetWriter.js – 回購支援 PV 寫入 + 中文數字盒數 + 手機格式校驗
 import fetch from 'node-fetch';
 
 const SHEET_CSV_URL   = process.env.SHEET_API_URL_CSV;
@@ -11,7 +11,7 @@ const MAX_GROUPS      = 6;
 const tzNow = () =>
   new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
 
-const cleanAll = s => String(s || '').replace(/[\s\u3000]/g,'').replace(/[\u200B-\u200D\uFEFF]/g,'').normalize('NFKC');
+const cleanAll = s => String(s || '').replace(/\s|\u3000/g,'').replace(/[\u200B-\u200D\uFEFF]/g,'').normalize('NFKC');
 
 const normPhone = s => {
   const d = String(s).replace(/\D/g,'');
@@ -59,6 +59,7 @@ export async function writeToSheet(order){
   const level = isRepurchase ? '已回購' : (inquiryMMDD===todayMMDD?'新客':'追蹤');
 
   const qty = parseQuantity(order.quantity);
+  const pv = parseInt(order.pv || '0', 10);
 
   const base = {
     channel: CHANNEL,
@@ -69,26 +70,40 @@ export async function writeToSheet(order){
     orderDate: `'${todayMD}`,
     quantity: `'${qty}`,
     product: PRODUCT_NAME,
+    pv, // ✅ 新增 PV 欄
     notes: order.notes,
     level
   };
 
   if(!isRepurchase){
-    await fetch(SHEET_WRITE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'appendNew',data:base})});
+    await fetch(SHEET_WRITE_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:'appendNew',data:base})
+    });
     return;
   }
 
   const row = rows[rowIndex];
-  let space=false;
-  for(let g=0;g<MAX_GROUPS;g++){
-    const c=10+g*3;
-    if(!row[c]&&!row[c+1]&&!row[c+2]){space=true;break;}
+  let spaceIndex = -1;
+  for(let g=0; g<MAX_GROUPS; g++){
+    const c = 10 + g * 4; // 每組4欄：訂購日、產品、盒數、PV
+    if(!row[c] && !row[c+1] && !row[c+2] && !row[c+3]){
+      spaceIndex = c;
+      break;
+    }
   }
-  if(!space) throw new Error('回購欄位已滿');
+  if(spaceIndex === -1) throw new Error('回購欄位已滿');
 
-  await fetch(SHEET_WRITE_URL,{
+  await fetch(SHEET_WRITE_URL, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({mode:'appendRight',data:{...base,row:rowIndex+1}})
+    body:JSON.stringify({
+      mode: 'appendRight',
+      data: {
+        ...base,
+        row: rowIndex + 1
+      }
+    })
   });
 }
