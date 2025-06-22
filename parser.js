@@ -9,6 +9,7 @@ export function parseOrder(text) {
   const addressLine = lines.find(l => l.includes('門市') || l.includes('地址'));
   const quantityLine = lines.find(l => l.includes('盒數') || /(\d+盒|[一二兩三四五六七八九十]+盒)/.test(l));
   const priceLine = lines.find(l => l.includes('價格') || l.includes('元'));
+  const pvLine = lines.find(l => l.includes('PV：'));
 
   const extract = (line, keyword) => (line || '').split(keyword)[1]?.trim() || '';
 
@@ -16,14 +17,14 @@ export function parseOrder(text) {
   const phone = extract(phoneLine, '電話：');
   const email = extract(emailLine, '信箱：');
   const address = extract(addressLine, '門市：') || extract(addressLine, '地址：');
-
   const quantity = extract(quantityLine, '盒數：') || quantityLine || '';
   const price = priceLine || '';
+  const pv = extract(pvLine, 'PV：') || '';
 
   const ig = lines.find(line => /^[a-zA-Z0-9._]{4,}$/.test(line)) || '';
 
   // notes = 除了系統欄位之外的敘述
-  const skipKeys = ['報單', '貨到', '刷卡', '姓名', '電話', '信箱', '門市', '地址', '盒數', '價格'];
+  const skipKeys = ['報單', '貨到', '刷卡', '姓名', '電話', '信箱', '門市', '地址', '盒數', '價格', 'PV：'];
   const notes = lines
     .filter(l => !skipKeys.some(k => l.includes(k)) && !/^\d{6}/.test(l) && l !== ig)
     .join('\n');
@@ -37,6 +38,7 @@ export function parseOrder(text) {
     address,
     quantity,
     price,
+    pv,
     ig,
     notes,
   };
